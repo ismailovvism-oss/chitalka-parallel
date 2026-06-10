@@ -135,15 +135,22 @@ body[data-layout="h"] .pair {
   gap: 0 1.2rem;
   align-items: flex-start;
 }
-body[data-layout="h"] .pair > .member { flex: 1 1 0; }
-body[data-layout="h"] .pair > .member + .member {
-  margin-top: 0;
-  padding-top: 0;
-  border-top: none;
-  border-inline-start: 1px dashed var(--border);
-  padding-inline-start: 1.2rem;
-}
+body[data-layout="h"] .pair > .member { flex: 1 1 0; margin-top: 0; padding-top: 0; border-top: none; }
 body[data-layout="h"] .fn-label { flex-basis: 100%; }
+
+/* разделитель — физически на левом крае правой колонки (контейнер всегда ltr) */
+body[data-layout="h"]:not([data-colrtl]) .pair > .member + .member {
+  border-left: 1px dashed var(--border);
+  padding-left: 1.2rem;
+}
+
+/* RTL-язык справа: порядок по направлению письма, разделитель — на правой колонке */
+body[data-layout="h"][data-colrtl] .pair > .member[dir="ltr"] { order: 1; }
+body[data-layout="h"][data-colrtl] .pair > .member[dir="rtl"] {
+  order: 2;
+  border-left: 1px dashed var(--border);
+  padding-left: 1.2rem;
+}
 
 /* ===== сноски ===== */
 .fnref {

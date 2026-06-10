@@ -16,6 +16,8 @@ const DEFAULTS = {
   swap: false,         // менять местами оригинал/перевод в паре
   fonts: {},           // lang → { family, size(em), line(line-height) }
   margin: 0.8,         // боковые поля колонки чтения, rem
+  colRatio: 1,         // доля ширины оригинала в две колонки (перевод = 2 - colRatio)
+  colRtl: true,        // в две колонки RTL-язык справа
   last: {},            // bookId → { chapter, sector, page, ts }
   bookmarks: {},       // bookId → [ { id, chapter, page, note, ts } ]
 };
@@ -622,6 +624,11 @@ function applyFonts() {
     const f = settings.fonts[lang];
     if (f) css += `.member.lang-${lang}{font-family:${f.family};font-size:${f.size}em;line-height:${f.line};}\n`;
   }
+  // ширина колонок (две колонки): доля оригинала vs перевода
+  const [orig, trans] = book.languages;
+  const r = settings.colRatio;
+  css += `body[data-layout="h"] .pair>.member.lang-${orig}{flex-grow:${r};}\n`;
+  if (trans) css += `body[data-layout="h"] .pair>.member.lang-${trans}{flex-grow:${(2 - r).toFixed(2)};}\n`;
   let el = document.getElementById('dyn-fonts');
   if (!el) {
     el = document.createElement('style');
@@ -630,6 +637,8 @@ function applyFonts() {
   }
   el.textContent = css;
   document.body.style.setProperty('--read-pad', settings.margin + 'rem');
+  // RTL-язык справа имеет смысл только если в книге есть rtl-язык
+  document.body.toggleAttribute('data-colrtl', !!settings.colRtl && book.rtl.length > 0);
 }
 
 // контролы строятся под языки текущей книги (rtl/ltr → разный список гарнитур)
@@ -685,6 +694,29 @@ function setupFontSettings() {
     v => v.toFixed(1) + ' rem',
     v => { settings.margin = v; applyFonts(); }));
   wrap.appendChild(mg);
+
+  // настройки режима «две колонки»
+  const cg = document.createElement('div');
+  cg.className = 'font-group';
+  const ch = document.createElement('div');
+  ch.className = 'font-lang';
+  ch.textContent = 'Две колонки';
+  cg.appendChild(ch);
+  cg.appendChild(makeSlider('Ширина: ориг./перевод', settings.colRatio, 0.5, 1.5, 0.05,
+    v => `${v.toFixed(2)} / ${(2 - v).toFixed(2)}`,
+    v => { settings.colRatio = v; applyFonts(); }));
+  if (book.rtl.length) {
+    const lbl = document.createElement('label');
+    lbl.className = 'row';
+    lbl.append('RTL-язык справа');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!settings.colRtl;
+    cb.addEventListener('change', () => { settings.colRtl = cb.checked; saveSettings(); applyFonts(); });
+    lbl.appendChild(cb);
+    cg.appendChild(lbl);
+  }
+  wrap.appendChild(cg);
 }
 
 // слайдер с живой подписью значения; onInput применяет, change сохраняет
