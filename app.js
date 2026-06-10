@@ -16,6 +16,7 @@ const DEFAULTS = {
   swap: false,         // менять местами оригинал/перевод в паре
   fonts: {},           // lang → { family, size(em) }
   last: {},            // bookId → { chapter, sector, page, ts }
+  bookmarks: {},       // bookId → [ { id, chapter, page, note, ts } ]
 };
 
 /* варианты шрифтов по направлению письма; значение option = font-family стек */
@@ -197,6 +198,7 @@ function renderChapter() {
     stream.appendChild(note);
   }
   applyVisibility();
+  markBookmarks();
 }
 
 /* ===== видимость языков: both → <orig> → <trans> ===== */
@@ -239,6 +241,7 @@ function updateActive() {
     if (activeEl) activeEl.classList.remove('active');
     activeEl = best;
     if (activeEl) activeEl.classList.add('active');
+    updateBookmarkBtn();
   }
   updatePageIndicator();
   rememberPosition();
@@ -379,6 +382,127 @@ function markTocCurrent() {
     li.classList.toggle('current', i === chapterIndex);
   });
 }
+
+/* ===== закладки на сектор (с заметкой) ===== */
+function getBookmarks(id = bookId) {
+  return settings.bookmarks[id] || (settings.bookmarks[id] = []);
+}
+function findBookmark(secId) {
+  return getBookmarks().find(b => b.id === secId);
+}
+
+function toggleActiveBookmark() {
+  if (!book || !activeEl) return;
+  const secId = activeEl.dataset.id;
+  const list = getBookmarks();
+  const i = list.findIndex(b => b.id === secId);
+  if (i >= 0) list.splice(i, 1);
+  else list.push({ id: secId, chapter: chapterIndex, page: currentPage(), note: '', ts: Date.now() });
+  saveSettings();
+  markBookmarks();
+  updateBookmarkBtn();
+  buildBookmarks();
+  toast(i >= 0 ? 'Закладка снята' : 'Закладка добавлена');
+}
+
+// метка на абзацах текущей главы
+function markBookmarks() {
+  const ids = new Set(getBookmarks().filter(b => b.chapter === chapterIndex).map(b => b.id));
+  stream.querySelectorAll('.pair').forEach(el => {
+    el.classList.toggle('bookmarked', ids.has(el.dataset.id));
+  });
+}
+
+function updateBookmarkBtn() {
+  const btn = $('#btn-bookmark');
+  const on = !!(book && activeEl && findBookmark(activeEl.dataset.id));
+  btn.classList.toggle('active-mark', on);
+  btn.title = on ? 'Убрать закладку' : 'Закладка на текущем месте';
+}
+
+function gotoSector(secId, chapter) {
+  $('#toc').hidden = true;
+  const target = `.pair[data-id="${secId}"]`;
+  if (chapter === chapterIndex) {
+    const el = stream.querySelector(target);
+    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); flash(el); }
+  } else {
+    loadChapter(chapter, target);
+  }
+}
+
+function shareSector(secId) {
+  const url = location.origin + location.pathname + '?book=' + encodeURIComponent(bookId) + '&s=' + encodeURIComponent(secId);
+  if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => toast('Ссылка скопирована'), () => toast(url));
+  else toast(url);
+}
+
+// список закладок в оглавлении
+function buildBookmarks() {
+  const section = $('#bm-section');
+  const ul = $('#bm-list');
+  ul.innerHTML = '';
+  const list = getBookmarks().slice().sort((a, b) => a.chapter - b.chapter || a.id.localeCompare(b.id));
+  section.hidden = list.length === 0;
+  for (const b of list) {
+    const li = document.createElement('li');
+    li.className = 'bm-item';
+
+    const go = document.createElement('button');
+    go.type = 'button';
+    go.className = 'bm-go';
+    const meta = document.createElement('span');
+    meta.className = 'bm-meta';
+    const chTitle = book.chapters[b.chapter] ? pickTitle(book.chapters[b.chapter].title) : `гл. ${b.chapter + 1}`;
+    meta.textContent = chTitle + (b.page != null ? ` · стр. ${b.page}` : '');
+    go.appendChild(meta);
+    if (b.note) {
+      const note = document.createElement('span');
+      note.className = 'bm-note';
+      note.textContent = b.note;
+      go.appendChild(note);
+    }
+    go.addEventListener('click', () => gotoSector(b.id, b.chapter));
+    li.appendChild(go);
+
+    const actions = document.createElement('span');
+    actions.className = 'bm-actions';
+    const edit = document.createElement('button');
+    edit.type = 'button';
+    edit.title = 'Заметка';
+    edit.textContent = '✎';
+    edit.addEventListener('click', () => {
+      const text = prompt('Заметка к закладке:', b.note || '');
+      if (text === null) return;
+      b.note = text.trim();
+      saveSettings();
+      buildBookmarks();
+    });
+    const share = document.createElement('button');
+    share.type = 'button';
+    share.title = 'Скопировать ссылку';
+    share.textContent = '↗';
+    share.addEventListener('click', () => shareSector(b.id));
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.title = 'Удалить';
+    del.textContent = '🗑';
+    del.addEventListener('click', () => {
+      const arr = getBookmarks();
+      const i = arr.findIndex(x => x.id === b.id);
+      if (i >= 0) arr.splice(i, 1);
+      saveSettings();
+      buildBookmarks();
+      markBookmarks();
+      updateBookmarkBtn();
+    });
+    actions.append(edit, share, del);
+    li.appendChild(actions);
+    ul.appendChild(li);
+  }
+}
+
+$('#btn-bookmark').addEventListener('click', toggleActiveBookmark);
 
 async function gotoPage(n) {
   const local = pairs.find(p => p.page === n);
@@ -789,7 +913,7 @@ function renderLibrary() {
   window.scrollTo(0, 0);
 }
 
-async function openBook(entry) {
+async function openBook(entry, opts = {}) {
   bookId = entry.id;
   base = entry.base.endsWith('/') ? entry.base : entry.base + '/';
   chapterCache.clear();
@@ -808,17 +932,34 @@ async function openBook(entry) {
   setupFontSettings();
   document.title = pickTitle(book.title);
   buildToc();
+  buildBookmarks();
+  // deep-link ?s=<sector> — найти главу с этим сектором; иначе вернуться к позиции
+  if (opts.sector) {
+    const ci = await chapterOfSector(opts.sector);
+    if (ci >= 0) { await loadChapter(ci, `.pair[data-id="${opts.sector}"]`); return; }
+    toast(`Сектор ${opts.sector} не найден`);
+  }
   const last = getLast(bookId);
   const ci = last && Number.isInteger(last.chapter) ? last.chapter : 0;
   const target = last && last.sector ? `.pair[data-id="${last.sector}"]` : null;
   await loadChapter(Math.min(Math.max(ci, 0), book.chapters.length - 1), target);
 }
 
-/* маршрут по ?book=<id>: книга из списка — читаем, иначе — библиотека */
+async function chapterOfSector(secId) {
+  for (let ci = 0; ci < book.chapters.length; ci++) {
+    let d;
+    try { d = await loadChapterData(ci); } catch { continue; }
+    if (d.pairs.some(p => p.id === secId)) return ci;
+  }
+  return -1;
+}
+
+/* маршрут по ?book=<id>&s=<sector>: книга из списка — читаем, иначе — библиотека */
 function route() {
-  const wanted = new URLSearchParams(location.search).get('book');
+  const params = new URLSearchParams(location.search);
+  const wanted = params.get('book');
   const entry = wanted ? library.find(b => b.id === wanted) : null;
-  if (entry) openBook(entry);
+  if (entry) openBook(entry, { sector: params.get('s') || null });
   else renderLibrary();
 }
 window.addEventListener('popstate', route);

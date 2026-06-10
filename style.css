@@ -86,6 +86,7 @@ button:active { background: var(--accent-soft); }
 }
 
 .pair {
+  position: relative;
   margin: 0.3rem 0;
   padding: 0.55rem 0.7rem;
   border-inline-start: 3px solid transparent;
@@ -97,6 +98,16 @@ button:active { background: var(--accent-soft); }
   border-inline-start-color: var(--accent);
   background: var(--active-bg);
 }
+.pair.bookmarked::after {
+  content: "🔖";
+  position: absolute;
+  top: 0.1rem;
+  inset-inline-end: 0.2rem;
+  font-size: 0.8rem;
+  opacity: 0.85;
+}
+
+#btn-bookmark.active-mark { color: var(--accent); }
 
 .member { min-width: 0; }
 .member p { margin: 0.3em 0; }
@@ -224,6 +235,15 @@ body[data-layout="h"] .fn-label { flex-basis: 100%; }
 .font-group label { margin: 0.45rem 0; }
 .font-size-val { color: var(--muted); font-size: 0.85rem; min-width: 3ch; text-align: end; }
 
+.sheet-sub { margin: 0.8rem 0 0.3rem; color: var(--muted); font-size: 0.8rem; font-weight: normal; letter-spacing: 0.03em; text-transform: uppercase; }
+#bm-list { margin: 0; padding: 0; list-style: none; }
+.bm-item { display: flex; align-items: center; gap: 0.3rem; border-bottom: 1px solid var(--border); }
+.bm-go { flex: 1; min-width: 0; display: block; padding: 0.55rem 0.2rem; text-align: start; }
+.bm-meta { display: block; font-size: 0.9rem; }
+.bm-note { display: block; color: var(--muted); font-size: 0.85rem; }
+.bm-actions { display: flex; flex: none; }
+.bm-actions button { padding: 0.4rem 0.35rem; font-size: 0.95rem; }
+
 #toc-list { margin: 0; padding: 0; list-style: none; }
 #toc-list li { border-bottom: 1px solid var(--border); }
 #toc-list li.current button { color: var(--accent); font-weight: bold; }
@@ -275,6 +295,7 @@ body[data-layout="h"] .fn-label { flex-basis: 100%; }
 body[data-view="library"] #btn-home,
 body[data-view="library"] #btn-toc,
 body[data-view="library"] #btn-search,
+body[data-view="library"] #btn-bookmark,
 body[data-view="library"] #btn-vis,
 body[data-view="library"] #btn-warn,
 body[data-view="library"] #bottombar { display: none !important; }
