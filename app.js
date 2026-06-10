@@ -12,6 +12,7 @@ const DEFAULTS = {
   visibility: 'both',  // both | <lang>
   layout: 'auto',      // auto | v | h
   fnMode: 'inline',    // inline | jump
+  align: 'start',      // start | justify — выравнивание текста
   debug: false,        // панель валидатора
   swap: false,         // менять местами оригинал/перевод в паре
   fonts: {},           // lang → { family, size(em), line(line-height) }
@@ -761,11 +762,16 @@ function makeSlider(caption, value, min, max, step, fmt, onInput) {
 }
 
 /* ===== настройки: панель ===== */
+function applyAlign() {
+  document.body.dataset.align = settings.align;
+}
+
 function syncSettingControls() {
   $('#set-theme').value = settings.theme;
   $('#set-layout').value = settings.layout;
   $('#set-fnmode').value = settings.fnMode;
   $('#set-order').value = settings.swap ? '1' : '0';
+  $('#set-align').value = settings.align;
   $('#set-debug').checked = settings.debug;
 }
 
@@ -774,11 +780,13 @@ function bindSettings() {
   const layout = $('#set-layout');
   const fnmode = $('#set-fnmode');
   const order = $('#set-order');
+  const align = $('#set-align');
   const debug = $('#set-debug');
   syncSettingControls();
   theme.addEventListener('change', () => { settings.theme = theme.value; saveSettings(); applyTheme(); });
   layout.addEventListener('change', () => { settings.layout = layout.value; saveSettings(); applyLayout(); updateActive(); });
   fnmode.addEventListener('change', () => { settings.fnMode = fnmode.value; saveSettings(); });
+  align.addEventListener('change', () => { settings.align = align.value; saveSettings(); applyAlign(); });
   order.addEventListener('change', () => {
     settings.swap = order.value === '1';
     saveSettings();
@@ -809,6 +817,7 @@ function importSettings(file) {
     saveSettings();
     applyTheme();
     applyLayout();
+    applyAlign();
     syncSettingControls();
     if (book) {
       ensureFontDefaults();
@@ -1182,6 +1191,7 @@ $('#btn-home').addEventListener('click', () => {
 async function init() {
   applyTheme();
   applyLayout();
+  applyAlign();
   bindSettings();
   try {
     const idx = JSON.parse(await fetchText('books/index.json'));

@@ -141,6 +141,7 @@ body[data-view="library"] #progress { display: none; }
 
 .member { min-width: 0; }
 .member p { margin: 0.3em 0; }
+body[data-align="justify"] .member p { text-align: justify; }
 .member + .member {
   margin-top: 0.4rem;
   padding-top: 0.4rem;
