@@ -264,6 +264,11 @@ body[data-layout="h"][data-colrtl] .pair > .member[dir="rtl"] {
   border-radius: 6px;
   color: var(--accent);
 }
+.link-btn { margin-top: 0.6rem; padding: 0.4rem 0; color: var(--accent); }
+
+.sheet.help h3 { margin-top: 1rem; }
+.sheet.help ul { margin: 0.3rem 0; padding-inline-start: 1.2rem; }
+.sheet.help li { margin: 0.3rem 0; font-size: 0.95rem; }
 .sheet input[type="range"] { flex: 1; max-width: 55%; accent-color: var(--accent); }
 
 /* ===== настройки шрифтов (на каждый язык) ===== */

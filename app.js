@@ -832,6 +832,8 @@ function importSettings(file) {
   reader.readAsText(file);
 }
 
+$('#btn-help').addEventListener('click', () => { $('#settings').hidden = true; $('#help').hidden = false; });
+
 $('#set-export').addEventListener('click', exportSettings);
 $('#set-import-btn').addEventListener('click', () => $('#set-import').click());
 $('#set-import').addEventListener('change', e => {
