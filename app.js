@@ -599,8 +599,11 @@ $('#btn-warn').addEventListener('click', () => {
 });
 
 /* ===== тема и раскладка ===== */
+const THEME_COLORS = { light: '#f4f1e8', sepia: '#eaddc2', dark: '#222326' };
 function applyTheme() {
   document.body.dataset.theme = settings.theme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && THEME_COLORS[settings.theme]) meta.content = THEME_COLORS[settings.theme];
 }
 
 const landscapeMq = window.matchMedia('(orientation: landscape)');

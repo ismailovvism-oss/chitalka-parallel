@@ -14,6 +14,18 @@
   --error: #b03030;
 }
 
+body[data-theme="sepia"] {
+  --bg: #f3ead6;
+  --fg: #5a4636;
+  --muted: #927a5c;
+  --panel: #eaddc2;
+  --border: #d9c8a3;
+  --accent: #9a5a28;
+  --accent-soft: rgba(154, 90, 40, 0.20);
+  --active-bg: rgba(154, 90, 40, 0.08);
+  --error: #a83232;
+}
+
 body[data-theme="dark"] {
   --bg: #191a1c;
   --fg: #d8d4cb;
