@@ -269,10 +269,28 @@ body[data-layout="h"] .fn-label { flex-basis: 100%; }
 /* в библиотеке скрыты элементы режима чтения */
 body[data-view="library"] #btn-home,
 body[data-view="library"] #btn-toc,
+body[data-view="library"] #btn-search,
 body[data-view="library"] #btn-vis,
 body[data-view="library"] #btn-warn,
 body[data-view="library"] #bottombar { display: none !important; }
 body[data-view="library"] { padding-bottom: 1rem; }
+
+/* ===== поиск по книге ===== */
+#search-form { display: flex; gap: 0.4rem; margin-bottom: 0.6rem; }
+#search-input { flex: 1; min-width: 0; font: inherit; padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--fg); }
+#search-go { color: var(--accent); }
+#search-results { font-size: 0.95rem; }
+.search-count { margin-bottom: 0.4rem; color: var(--muted); font-size: 0.85rem; }
+.search-item {
+  display: block;
+  width: 100%;
+  padding: 0.55rem 0.2rem;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+}
+.search-meta { display: block; margin-bottom: 0.15rem; color: var(--muted); font-size: 0.8rem; }
+.search-snip { display: block; }
+.search-snip mark { background: var(--accent-soft); color: inherit; border-radius: 3px; padding: 0 0.1em; }
 
 /* ===== переход к странице ===== */
 #page-popover {

@@ -600,6 +600,119 @@ $('#page-form').addEventListener('submit', e => {
   if (n >= 1) gotoPage(n);
 });
 
+/* ===== поиск по книге ===== */
+// диакритика/татвиль арабского — убираем при поиске
+const AR_DIACRITICS = /[ؐ-ًؚ-ٰٟۖ-ۜ۟-۪ۨ-ۭـ]/;
+const AR_FOLD = { 'آ': 'ا', 'أ': 'ا', 'إ': 'ا', 'ى': 'ي', 'ئ': 'ي', 'ؤ': 'و', 'ة': 'ه' };
+function foldChar(ch) {
+  if (AR_FOLD[ch]) return AR_FOLD[ch];
+  return ch.toLowerCase().replace('ё', 'е');
+}
+// нормализованная строка + карта: норм-индекс → исходный индекс (для сниппета)
+function normalizeWithMap(str) {
+  let norm = '';
+  const map = [];
+  for (let i = 0; i < str.length; i++) {
+    const ch = str[i];
+    if (AR_DIACRITICS.test(ch)) continue; // огласовки/татвиль выкидываем
+    norm += foldChar(ch);
+    map.push(i);
+  }
+  return { norm, map };
+}
+function normalize(str) {
+  return normalizeWithMap(str).norm;
+}
+
+const htmlToText = (() => {
+  const tmp = document.createElement('div');
+  return html => { tmp.innerHTML = html; return tmp.textContent || ''; };
+})();
+
+let searchSeq = 0;
+async function runSearch(raw) {
+  const q = normalize(raw).trim();
+  const box = $('#search-results');
+  if (q.length < 2) { box.textContent = 'Введите минимум 2 символа.'; return; }
+  const seq = ++searchSeq;
+  box.textContent = 'Поиск…';
+  const results = [];
+  for (let ci = 0; ci < book.chapters.length; ci++) {
+    let data;
+    try { data = await loadChapterData(ci); } catch { continue; }
+    if (seq !== searchSeq) return; // запущен новый поиск — бросаем этот
+    for (const pair of data.pairs) {
+      for (const lang of book.languages) {
+        if (pair[lang] == null) continue;
+        const text = htmlToText(pair[lang]);
+        const { norm, map } = normalizeWithMap(text);
+        const idx = norm.indexOf(q);
+        if (idx >= 0) {
+          results.push({ ci, id: pair.id, lang, text, start: map[idx], end: map[idx + q.length - 1] + 1 });
+        }
+      }
+    }
+    if (results.length > 200) break;
+  }
+  if (seq !== searchSeq) return;
+  renderResults(results, raw.trim());
+}
+
+function renderResults(results, label) {
+  const box = $('#search-results');
+  box.innerHTML = '';
+  if (!results.length) { box.textContent = `Ничего не найдено: «${label}».`; return; }
+  const head = document.createElement('div');
+  head.className = 'search-count';
+  head.textContent = `Найдено: ${results.length}`;
+  box.appendChild(head);
+  for (const r of results) {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'search-item';
+
+    const meta = document.createElement('span');
+    meta.className = 'search-meta';
+    meta.textContent = `${pickTitle(book.chapters[r.ci].title)} · ${r.lang.toUpperCase()}`;
+    item.appendChild(meta);
+
+    const snip = document.createElement('span');
+    snip.className = 'search-snip';
+    snip.dir = book.rtl.includes(r.lang) ? 'rtl' : 'ltr';
+    const from = Math.max(0, r.start - 40);
+    const to = Math.min(r.text.length, r.end + 40);
+    snip.append(
+      (from > 0 ? '…' : '') + r.text.slice(from, r.start),
+    );
+    const mark = document.createElement('mark');
+    mark.textContent = r.text.slice(r.start, r.end);
+    snip.append(mark, r.text.slice(r.end, to) + (to < r.text.length ? '…' : ''));
+    item.appendChild(snip);
+
+    item.addEventListener('click', () => {
+      $('#search').hidden = true;
+      const target = `.pair[data-id="${r.id}"]`;
+      if (r.ci === chapterIndex) {
+        const el = stream.querySelector(target);
+        if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); flash(el); }
+      } else {
+        loadChapter(r.ci, target);
+      }
+    });
+    box.appendChild(item);
+  }
+}
+
+$('#btn-search').addEventListener('click', () => {
+  if (!book) return;
+  $('#search').hidden = false;
+  $('#search-input').focus();
+});
+$('#search-form').addEventListener('submit', e => {
+  e.preventDefault();
+  runSearch($('#search-input').value);
+});
+
 /* ===== библиотека (авторский список книг) ===== */
 function entryLabel(e) {
   return (e.title && (e.title.ru || e.title.ar)) || e.id;
