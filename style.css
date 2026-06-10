@@ -128,11 +128,12 @@ body[data-view="library"] #progress { display: none; }
   border-inline-start-color: var(--accent);
   background: var(--active-bg);
 }
+.pair.bookmarked { padding-inline-end: 1.7rem; } /* резерв под метку, чтобы не налезала на текст */
 .pair.bookmarked::after {
   content: "🔖";
   position: absolute;
-  top: 0.1rem;
-  inset-inline-end: 0.2rem;
+  top: 0.45rem;
+  inset-inline-end: 0.3rem;
   font-size: 0.8rem;
   opacity: 0.85;
 }
@@ -157,7 +158,6 @@ body[data-align="justify"] .member p { text-align: justify; }
 /* «подсмотреть» второй язык: тап по паре в одноязычном режиме */
 body[data-peek] .pair { cursor: pointer; }
 .pair.peek .member.lang-hidden { display: block; opacity: 0.72; }
-body[data-layout="h"] .pair.peek .member.lang-hidden { display: block; }
 
 /* две колонки (альбом/планшет или ручной тумблер) */
 body[data-layout="h"] .pair {

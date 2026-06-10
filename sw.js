@@ -10,7 +10,7 @@
  * Версию бампать при изменении оболочки — старый кеш чистится на activate.
  */
 
-const VERSION = 'chitalka-v2';
+const VERSION = 'chitalka-v3';
 const SHELL = [
   './',
   'index.html',
@@ -52,17 +52,16 @@ async function cacheFirst(req) {
 
 async function networkFirst(req) {
   const cache = await caches.open(VERSION);
+  // навигации (?book=…&s=…) кешируем под одним ключом index.html — иначе кеш пухнет
+  // по записи на каждый URL с query
+  const key = req.mode === 'navigate' ? 'index.html' : req;
   try {
     const res = await fetch(req);
-    if (cacheable(res)) cache.put(req, res.clone());
+    if (cacheable(res)) cache.put(key, res.clone());
     return res;
   } catch (err) {
-    const hit = await cache.match(req);
+    const hit = (await cache.match(key)) || (req.mode === 'navigate' && await cache.match('./'));
     if (hit) return hit;
-    if (req.mode === 'navigate') {
-      const shell = (await cache.match('index.html')) || (await cache.match('./'));
-      if (shell) return shell;
-    }
     throw err;
   }
 }

@@ -115,8 +115,22 @@ function pickTitle(t) {
   return t[trans] || t[orig] || '';
 }
 
-async function loadChapter(i, targetSelector) {
+// поиск пары по id сравнением dataset (без построения CSS-селектора из данных)
+function pairById(id) {
+  if (!id) return null;
+  for (const el of stream.querySelectorAll('.pair')) if (el.dataset.id === id) return el;
+  return null;
+}
+function scrollToPair(id, smooth) {
+  const el = pairById(id);
+  if (el) { el.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' }); flash(el); }
+  return el;
+}
+
+let loading = false; // глава грузится/перерисовывается — не сохранять промежуточную позицию
+async function loadChapter(i, targetId) {
   chapterIndex = i;
+  loading = true;
   $('#chapter-title').textContent = 'Загрузка…';
   try {
     const data = await loadChapterData(i);
@@ -125,6 +139,7 @@ async function loadChapter(i, targetSelector) {
   } catch (err) {
     showLoadError('Не удалось загрузить главу: ' + err.message);
     $('#chapter-title').textContent = pickTitle(book.chapters[i].title);
+    loading = false;
     return;
   }
   $('#chapter-title').textContent = pickTitle(book.chapters[i].title);
@@ -134,12 +149,9 @@ async function loadChapter(i, targetSelector) {
   markTocCurrent();
   setLast(bookId, { chapter: i });
   saveSettings();
-  if (targetSelector) {
-    const el = stream.querySelector(targetSelector);
-    if (el) { el.scrollIntoView({ block: 'start' }); flash(el); }
-  } else {
-    window.scrollTo(0, 0);
-  }
+  if (targetId) scrollToPair(targetId, false);
+  else window.scrollTo(0, 0);
+  loading = false;
   applyPendingHit();
   updateActive();
 }
@@ -215,9 +227,13 @@ function applyVisibility() {
   });
   // в одноязычном режиме можно «подсмотреть» второй язык тапом по паре
   document.body.toggleAttribute('data-peek', vis !== 'both');
-  if (vis === 'both') stream.querySelectorAll('.pair.peek').forEach(p => p.classList.remove('peek'));
+  if (vis === 'both') clearPeeks();
   $('#btn-vis').textContent =
     vis === 'both' ? displayLangs().map(l => l.toUpperCase()).join('+') : vis.toUpperCase();
+}
+
+function clearPeeks() {
+  stream.querySelectorAll('.pair.peek').forEach(p => p.classList.remove('peek'));
 }
 
 function cycleVisibility() {
@@ -225,6 +241,7 @@ function cycleVisibility() {
   const cur = order.indexOf(settings.visibility);
   settings.visibility = order[(cur + 1) % order.length];
   saveSettings();
+  clearPeeks(); // сменили язык — прежние подсмотры показывали бы теперь-скрытый
   applyVisibility();
   updateActive();
 }
@@ -265,7 +282,7 @@ function updateProgress() {
 /* позиция чтения сохраняется с задержкой — не дёргать localStorage на каждый кадр */
 let posSaveTick = null;
 function rememberPosition() {
-  if (!book || !activeEl) return;
+  if (!book || !activeEl || loading) return; // во время загрузки activeEl может быть из старой главы
   setLast(bookId, { chapter: chapterIndex, sector: activeEl.dataset.id, page: currentPage(), ts: Date.now() });
   if (posSaveTick) clearTimeout(posSaveTick);
   posSaveTick = setTimeout(saveSettings, 500);
@@ -309,8 +326,8 @@ stream.addEventListener('click', e => {
   }
   const back = e.target.closest('.fn-back');
   if (back) { returnFromFn(back); return; }
-  // одноязычный режим: тап по паре раскрывает/прячет второй язык
-  if (settings.visibility !== 'both' && !window.getSelection().toString()) {
+  // одноязычный режим: тап по паре раскрывает/прячет второй язык (не мешаем выделению)
+  if (settings.visibility !== 'both' && window.getSelection().isCollapsed) {
     const pairEl = e.target.closest('.pair');
     if (pairEl) pairEl.classList.toggle('peek');
   }
@@ -348,7 +365,7 @@ function toggleInlineFn(afterEl, n) {
 }
 
 function jumpToFn(originBlock, n) {
-  const target = stream.querySelector(`.pair[data-id="fn${n}"]`);
+  const target = pairById('fn' + n);
   if (!target) { toggleInlineFn(originBlock, n); return; } // битая ссылка — покажем сообщение
   const originPair = findPairElBack(originBlock);
   fnJump = { originId: originPair ? originPair.dataset.id : null, fn: n };
@@ -362,7 +379,7 @@ function jumpToFn(originBlock, n) {
 function returnFromFn(btn) {
   btn.hidden = true;
   if (!fnJump || !fnJump.originId) return;
-  const origin = stream.querySelector(`.pair[data-id="${fnJump.originId}"]`);
+  const origin = pairById(fnJump.originId);
   if (origin) {
     origin.scrollIntoView({ behavior: 'smooth', block: 'center' });
     origin.querySelectorAll(`.fnref[data-fn="${fnJump.fn}"]`).forEach(flash);
@@ -401,7 +418,7 @@ function markTocCurrent() {
 
 /* ===== закладки на сектор (с заметкой) ===== */
 function getBookmarks(id = bookId) {
-  return settings.bookmarks[id] || (settings.bookmarks[id] = []);
+  return settings.bookmarks[id] || []; // чистый геттер — не плодим пустые записи в localStorage
 }
 function findBookmark(secId) {
   return getBookmarks().find(b => b.id === secId);
@@ -410,7 +427,7 @@ function findBookmark(secId) {
 function toggleActiveBookmark() {
   if (!book || !activeEl) return;
   const secId = activeEl.dataset.id;
-  const list = getBookmarks();
+  const list = settings.bookmarks[bookId] || (settings.bookmarks[bookId] = []);
   const i = list.findIndex(b => b.id === secId);
   if (i >= 0) list.splice(i, 1);
   else list.push({ id: secId, chapter: chapterIndex, page: currentPage(), note: '', ts: Date.now() });
@@ -438,13 +455,8 @@ function updateBookmarkBtn() {
 
 function gotoSector(secId, chapter) {
   $('#toc').hidden = true;
-  const target = `.pair[data-id="${secId}"]`;
-  if (chapter === chapterIndex) {
-    const el = stream.querySelector(target);
-    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); flash(el); }
-  } else {
-    loadChapter(chapter, target);
-  }
+  if (chapter === chapterIndex) scrollToPair(secId, true);
+  else loadChapter(chapter, secId);
 }
 
 function shareSector(secId) {
@@ -523,8 +535,7 @@ $('#btn-bookmark').addEventListener('click', toggleActiveBookmark);
 async function gotoPage(n) {
   const local = pairs.find(p => p.page === n);
   if (local) {
-    const el = stream.querySelector(`.pair[data-id="${local.id}"]`);
-    if (el) { el.scrollIntoView({ behavior: 'smooth', block: 'start' }); flash(el); }
+    scrollToPair(local.id, true);
     return;
   }
   // нумерация сквозная по тому — ищем по остальным главам
@@ -534,7 +545,7 @@ async function gotoPage(n) {
     try { data = await loadChapterData(i); } catch { continue; }
     const hit = data.pairs.find(p => p.page === n);
     if (hit) {
-      await loadChapter(i, `.pair[data-id="${hit.id}"]`);
+      await loadChapter(i, hit.id);
       return;
     }
   }
@@ -820,6 +831,8 @@ function importSettings(file) {
     applyAlign();
     syncSettingControls();
     if (book) {
+      // видимость из бэкапа могла быть с языком другой книги — иначе глава станет пустой
+      if (!['both', ...book.languages].includes(settings.visibility)) settings.visibility = 'both';
       ensureFontDefaults();
       applyFonts();
       setupFontSettings();
@@ -945,7 +958,7 @@ function jumpToHit(r) {
   $('#search').hidden = true;
   pendingHit = r;
   if (r.ci === chapterIndex) applyPendingHit();
-  else loadChapter(r.ci, `.pair[data-id="${r.id}"]`);
+  else loadChapter(r.ci, r.id);
 }
 
 // подсветить найденный фрагмент в нужном члене пары; раскрыть язык, если скрыт
@@ -954,7 +967,7 @@ function applyPendingHit() {
   pendingHit = null;
   stream.querySelectorAll('mark.search-hit').forEach(unwrap);
   if (!r || r.ci !== chapterIndex) return;
-  const pairEl = stream.querySelector(`.pair[data-id="${r.id}"]`);
+  const pairEl = pairById(r.id);
   if (!pairEl) return;
   if (settings.visibility !== 'both' && settings.visibility !== r.lang) pairEl.classList.add('peek');
   const member = pairEl.querySelector(`.member.lang-${r.lang}`);
@@ -1146,6 +1159,16 @@ async function openBook(entry, opts = {}) {
     $('#chapter-title').textContent = 'Ошибка';
     return;
   }
+  // мягкая валидация манифеста: rtl/title опциональны, languages/chapters обязательны
+  if (!Array.isArray(book.languages) || !book.languages.length ||
+      !Array.isArray(book.chapters) || !book.chapters.length) {
+    book = null;
+    showLoadError(`Книга «${entry.id}»: в book.json нужны непустые массивы languages и chapters.`);
+    $('#chapter-title').textContent = 'Ошибка';
+    return;
+  }
+  if (!Array.isArray(book.rtl)) book.rtl = [];
+  if (!book.title) book.title = { [book.languages[0]]: entry.id };
   if (!['both', ...book.languages].includes(settings.visibility)) settings.visibility = 'both';
   ensureFontDefaults();
   applyFonts();
@@ -1156,13 +1179,12 @@ async function openBook(entry, opts = {}) {
   // deep-link ?s=<sector> — найти главу с этим сектором; иначе вернуться к позиции
   if (opts.sector) {
     const ci = await chapterOfSector(opts.sector);
-    if (ci >= 0) { await loadChapter(ci, `.pair[data-id="${opts.sector}"]`); return; }
+    if (ci >= 0) { await loadChapter(ci, opts.sector); return; }
     toast(`Сектор ${opts.sector} не найден`);
   }
   const last = getLast(bookId);
   const ci = last && Number.isInteger(last.chapter) ? last.chapter : 0;
-  const target = last && last.sector ? `.pair[data-id="${last.sector}"]` : null;
-  await loadChapter(Math.min(Math.max(ci, 0), book.chapters.length - 1), target);
+  await loadChapter(Math.min(Math.max(ci, 0), book.chapters.length - 1), last ? last.sector : null);
 }
 
 async function chapterOfSector(secId) {
@@ -1179,7 +1201,10 @@ function route() {
   const params = new URLSearchParams(location.search);
   const wanted = params.get('book');
   const entry = wanted ? library.find(b => b.id === wanted) : null;
-  if (entry) openBook(entry, { sector: params.get('s') || null });
+  const sector = params.get('s');
+  // id сектора — только безопасные символы (sNNN/fnNNN/s050a и т.п.)
+  const safeSector = sector && /^[\w-]+$/.test(sector) ? sector : null;
+  if (entry) openBook(entry, { sector: safeSector });
   else renderLibrary();
 }
 window.addEventListener('popstate', route);
