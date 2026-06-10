@@ -824,6 +824,25 @@ document.addEventListener('keydown', e => {
   }
 });
 
+/* ===== свайп влево/вправо — смена глав (тач) ===== */
+let swipeX = null, swipeY = null, swipeT = 0;
+document.addEventListener('touchstart', e => {
+  if (e.touches.length !== 1) { swipeX = null; return; }
+  swipeX = e.touches[0].clientX;
+  swipeY = e.touches[0].clientY;
+  swipeT = Date.now();
+}, { passive: true });
+document.addEventListener('touchend', e => {
+  if (swipeX == null) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - swipeX, dy = t.clientY - swipeY, dt = Date.now() - swipeT;
+  swipeX = null;
+  if (document.body.dataset.view !== 'reading' || !book || anyPopupOpen()) return;
+  if (dt > 600 || Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 2) return; // не горизонтальный свайп
+  if (dx < 0) { if (chapterIndex < book.chapters.length - 1) loadChapter(chapterIndex + 1); }
+  else { if (chapterIndex > 0) loadChapter(chapterIndex - 1); }
+}, { passive: true });
+
 /* ===== поиск по книге ===== */
 // диакритика/татвиль арабского — убираем при поиске
 const AR_DIACRITICS = /[ؐ-ًؚ-ٰٟۖ-ۜ۟-۪ۨ-ۭـ]/;
