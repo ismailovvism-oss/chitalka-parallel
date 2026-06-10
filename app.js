@@ -13,8 +13,30 @@ const DEFAULTS = {
   layout: 'auto',      // auto | v | h
   fnMode: 'inline',    // inline | jump
   debug: false,        // панель валидатора
+  swap: false,         // менять местами оригинал/перевод в паре
+  fonts: {},           // lang → { family, size(em) }
   last: {},            // bookId → индекс последней главы
 };
+
+/* варианты шрифтов по направлению письма; значение option = font-family стек */
+const FONT_CHOICES = {
+  rtl: [
+    { label: 'Scheherazade New (насх)', stack: '"Scheherazade New", "Noto Naskh Arabic", serif' },
+    { label: 'Amiri', stack: '"Amiri", "Scheherazade New", serif' },
+    { label: 'Noto Naskh Arabic', stack: '"Noto Naskh Arabic", serif' },
+    { label: 'Noto Sans Arabic', stack: '"Noto Sans Arabic", sans-serif' },
+    { label: 'Traditional Arabic', stack: '"Traditional Arabic", "Noto Naskh Arabic", serif' },
+  ],
+  ltr: [
+    { label: 'Georgia', stack: 'Georgia, "Times New Roman", serif' },
+    { label: 'PT Serif', stack: '"PT Serif", Georgia, serif' },
+    { label: 'Literata', stack: '"Literata", Georgia, serif' },
+    { label: 'PT Sans', stack: '"PT Sans", system-ui, sans-serif' },
+    { label: 'Системный', stack: 'system-ui, -apple-system, sans-serif' },
+  ],
+};
+const LANG_NAMES = { ar: 'Арабский', ru: 'Русский', en: 'Английский', fa: 'Фарси', tr: 'Турецкий' };
+const langName = l => LANG_NAMES[l] || l.toUpperCase();
 
 function loadSettings() {
   try {
@@ -106,9 +128,14 @@ async function loadChapter(i, targetSelector) {
   updateActive();
 }
 
+/* порядок языков в паре: канонический [orig, trans] или перевёрнутый (настройка) */
+function displayLangs() {
+  return settings.swap ? book.languages.slice().reverse() : book.languages;
+}
+
 /* ===== рендер единого потока пар ===== */
 function buildMembers(pair, target) {
-  for (const lang of book.languages) {
+  for (const lang of displayLangs()) {
     if (pair[lang] == null) continue;
     const mem = document.createElement('div');
     mem.className = 'member lang-' + lang;
@@ -170,7 +197,7 @@ function applyVisibility() {
     m.classList.toggle('lang-hidden', vis !== 'both' && m.getAttribute('lang') !== vis);
   });
   $('#btn-vis').textContent =
-    vis === 'both' ? book.languages.map(l => l.toUpperCase()).join('+') : vis.toUpperCase();
+    vis === 'both' ? displayLangs().map(l => l.toUpperCase()).join('+') : vis.toUpperCase();
 }
 
 function cycleVisibility() {
@@ -417,19 +444,116 @@ function applyLayout() {
 }
 landscapeMq.addEventListener('change', applyLayout);
 
+/* ===== шрифты: размер и гарнитура на каждый язык ===== */
+function fontChoicesFor(lang) {
+  return FONT_CHOICES[book.rtl.includes(lang) ? 'rtl' : 'ltr'];
+}
+
+function ensureFontDefaults() {
+  for (const lang of book.languages) {
+    const cur = settings.fonts[lang] || {};
+    const defSize = book.rtl.includes(lang) ? 1.35 : 1; // арабский крупнее по умолчанию
+    settings.fonts[lang] = {
+      family: cur.family || fontChoicesFor(lang)[0].stack,
+      size: typeof cur.size === 'number' ? cur.size : defSize,
+    };
+  }
+}
+
+// один <style> с правилами .member.lang-XX, приоритетнее style.css (добавлен позже в head)
+function applyFonts() {
+  if (!book) return;
+  let css = '';
+  for (const lang of book.languages) {
+    const f = settings.fonts[lang];
+    if (f) css += `.member.lang-${lang}{font-family:${f.family};font-size:${f.size}em;}\n`;
+  }
+  let el = document.getElementById('dyn-fonts');
+  if (!el) {
+    el = document.createElement('style');
+    el.id = 'dyn-fonts';
+    document.head.appendChild(el);
+  }
+  el.textContent = css;
+}
+
+// контролы строятся под языки текущей книги (rtl/ltr → разный список гарнитур)
+function setupFontSettings() {
+  const wrap = $('#set-fonts');
+  wrap.innerHTML = '';
+  for (const lang of book.languages) {
+    const f = settings.fonts[lang];
+    const group = document.createElement('div');
+    group.className = 'font-group';
+    const head = document.createElement('div');
+    head.className = 'font-lang';
+    head.textContent = `${langName(lang)} (${lang.toUpperCase()})`;
+    group.appendChild(head);
+
+    const famLabel = document.createElement('label');
+    famLabel.append('Шрифт');
+    const sel = document.createElement('select');
+    for (const ch of fontChoicesFor(lang)) {
+      const o = document.createElement('option');
+      o.value = ch.stack;
+      o.textContent = ch.label;
+      sel.appendChild(o);
+    }
+    sel.value = f.family;
+    if (sel.selectedIndex < 0) { sel.selectedIndex = 0; settings.fonts[lang].family = sel.value; applyFonts(); }
+    sel.addEventListener('change', () => {
+      settings.fonts[lang].family = sel.value;
+      saveSettings();
+      applyFonts();
+    });
+    famLabel.appendChild(sel);
+    group.appendChild(famLabel);
+
+    const sizeLabel = document.createElement('label');
+    sizeLabel.append('Размер');
+    const rng = document.createElement('input');
+    rng.type = 'range';
+    rng.min = '0.7';
+    rng.max = '2.4';
+    rng.step = '0.05';
+    rng.value = String(f.size);
+    const val = document.createElement('span');
+    val.className = 'font-size-val';
+    const showVal = () => { val.textContent = Math.round(f.size * 100) + '%'; };
+    showVal();
+    rng.addEventListener('input', () => {
+      settings.fonts[lang].size = Number(rng.value);
+      showVal();
+      applyFonts();
+    });
+    rng.addEventListener('change', saveSettings);
+    sizeLabel.append(rng, val);
+    group.appendChild(sizeLabel);
+
+    wrap.appendChild(group);
+  }
+}
+
 /* ===== настройки: панель ===== */
 function bindSettings() {
   const theme = $('#set-theme');
   const layout = $('#set-layout');
   const fnmode = $('#set-fnmode');
+  const order = $('#set-order');
   const debug = $('#set-debug');
   theme.value = settings.theme;
   layout.value = settings.layout;
   fnmode.value = settings.fnMode;
+  order.value = settings.swap ? '1' : '0';
   debug.checked = settings.debug;
   theme.addEventListener('change', () => { settings.theme = theme.value; saveSettings(); applyTheme(); });
   layout.addEventListener('change', () => { settings.layout = layout.value; saveSettings(); applyLayout(); updateActive(); });
   fnmode.addEventListener('change', () => { settings.fnMode = fnmode.value; saveSettings(); });
+  order.addEventListener('change', () => {
+    settings.swap = order.value === '1';
+    saveSettings();
+    if (book) { renderChapter(); updateActive(); }
+  });
   debug.addEventListener('change', () => { settings.debug = debug.checked; saveSettings(); renderDebug(); });
 }
 
@@ -510,6 +634,9 @@ async function openBook(entry) {
     return;
   }
   if (!['both', ...book.languages].includes(settings.visibility)) settings.visibility = 'both';
+  ensureFontDefaults();
+  applyFonts();
+  setupFontSettings();
   document.title = pickTitle(book.title);
   buildToc();
   const last = Number.isInteger(settings.last[bookId]) ? settings.last[bookId] : 0;

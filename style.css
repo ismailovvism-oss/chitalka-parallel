@@ -202,6 +202,22 @@ body[data-layout="h"] .fn-label { flex-basis: 100%; }
   margin: 0.7rem 0;
 }
 .sheet select { font: inherit; padding: 0.2rem; max-width: 55%; }
+.sheet input[type="range"] { flex: 1; max-width: 55%; accent-color: var(--accent); }
+
+/* ===== настройки шрифтов (на каждый язык) ===== */
+#set-fonts { margin: 0.4rem 0; }
+.font-group {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border);
+}
+.font-lang {
+  margin-bottom: 0.1rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.font-group label { margin: 0.45rem 0; }
+.font-size-val { color: var(--muted); font-size: 0.85rem; min-width: 3ch; text-align: end; }
 
 #toc-list { margin: 0; padding: 0; list-style: none; }
 #toc-list li { border-bottom: 1px solid var(--border); }

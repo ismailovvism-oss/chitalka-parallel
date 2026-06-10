@@ -5,6 +5,9 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title>Параллельная читалка</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Amiri&family=Literata&family=Noto+Naskh+Arabic&family=Noto+Sans+Arabic&family=PT+Sans&family=PT+Serif&family=Scheherazade+New&display=swap">
 <link rel="stylesheet" href="style.css">
 </head>
 <body data-theme="light" data-layout="v" data-view="library">
@@ -63,6 +66,13 @@
         <option value="jump">скачок и возврат</option>
       </select>
     </label>
+    <label>Порядок пары
+      <select id="set-order">
+        <option value="0">оригинал первым</option>
+        <option value="1">перевод первым</option>
+      </select>
+    </label>
+    <div id="set-fonts"></div>
     <label class="row">Режим проверки (валидатор)
       <input id="set-debug" type="checkbox">
     </label>
