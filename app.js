@@ -19,6 +19,7 @@ const DEFAULTS = {
   margin: 0.8,         // боковые поля колонки чтения, rem
   colRatio: 1,         // доля ширины оригинала в две колонки (перевод = 2 - colRatio)
   colRtl: true,        // в две колонки RTL-язык справа
+  highlights: {},      // bookId → [ { chapter, id, lang, start, end, ts } ]
   last: {},            // bookId → { chapter, sector, page, ts }
   bookmarks: {},       // bookId → [ { id, chapter, page, note, ts } ]
 };
@@ -216,6 +217,7 @@ function renderChapter() {
   }
   applyVisibility();
   markBookmarks();
+  applyHighlights();
 }
 
 /* ===== видимость языков: both → <orig> → <trans> ===== */
@@ -326,6 +328,8 @@ stream.addEventListener('click', e => {
   }
   const back = e.target.closest('.fn-back');
   if (back) { returnFromFn(back); return; }
+  const hl = e.target.closest('mark.hl');
+  if (hl && window.getSelection().isCollapsed) { removeHighlight(hl.dataset.ts); return; }
   // одноязычный режим: тап по паре раскрывает/прячет второй язык (не мешаем выделению)
   if (settings.visibility !== 'both' && window.getSelection().isCollapsed) {
     const pairEl = e.target.closest('.pair');
@@ -531,6 +535,87 @@ function buildBookmarks() {
 }
 
 $('#btn-bookmark').addEventListener('click', toggleActiveBookmark);
+
+/* ===== текстовые выделения ===== */
+function getHighlights(id = bookId) {
+  return settings.highlights[id] || [];
+}
+
+// нанести сохранённые выделения текущей главы поверх отрендеренных пар
+function applyHighlights() {
+  for (const h of getHighlights()) {
+    if (h.chapter !== chapterIndex) continue;
+    const pairEl = pairById(h.id);
+    const member = pairEl && pairEl.querySelector(`.member.lang-${h.lang}`);
+    if (member) highlightRange(member, h.start, h.end, 'hl', { ts: String(h.ts) });
+  }
+}
+
+// смещения выделения относительно textContent члена (как у поиска)
+function selectionOffsets(member, range) {
+  if (!member.contains(range.startContainer) || !member.contains(range.endContainer)) return null;
+  const pre = range.cloneRange();
+  pre.selectNodeContents(member);
+  pre.setEnd(range.startContainer, range.startOffset);
+  const start = pre.toString().length;
+  const end = start + range.toString().length;
+  return end > start ? { start, end } : null;
+}
+
+function addHighlight() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const member = (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)
+    .closest('.member');
+  const pairEl = member && member.closest('.pair');
+  if (!member || !pairEl) return;
+  const off = selectionOffsets(member, range);
+  if (!off) return;
+  const lang = member.getAttribute('lang');
+  const list = settings.highlights[bookId] || (settings.highlights[bookId] = []);
+  list.push({ chapter: chapterIndex, id: pairEl.dataset.id, lang, start: off.start, end: off.end, ts: Date.now() });
+  saveSettings();
+  sel.removeAllRanges();
+  hideSelToolbar();
+  // перерисуем выделения главы (проще, чем точечно вставлять поверх возможных пересечений)
+  stream.querySelectorAll('mark.hl').forEach(unwrap);
+  applyHighlights();
+}
+
+function removeHighlight(ts) {
+  const list = settings.highlights[bookId];
+  if (!list) return;
+  const i = list.findIndex(h => String(h.ts) === String(ts));
+  if (i >= 0) { list.splice(i, 1); saveSettings(); }
+  stream.querySelectorAll('mark.hl').forEach(unwrap);
+  applyHighlights();
+}
+
+/* плавающая кнопка над выделением */
+function showSelToolbar(range) {
+  const bar = $('#sel-toolbar');
+  const r = range.getBoundingClientRect();
+  bar.hidden = false;
+  bar.style.top = Math.max(4, r.top - bar.offsetHeight - 6) + 'px';
+  bar.style.left = Math.min(window.innerWidth - bar.offsetWidth - 6,
+    Math.max(6, r.left + r.width / 2 - bar.offsetWidth / 2)) + 'px';
+}
+function hideSelToolbar() { $('#sel-toolbar').hidden = true; }
+
+document.addEventListener('selectionchange', () => {
+  if (document.body.dataset.view !== 'reading') return;
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) { hideSelToolbar(); return; }
+  const range = sel.getRangeAt(0);
+  const member = (range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement)
+    .closest('.member');
+  if (member && stream.contains(member) && member.contains(range.endContainer)) showSelToolbar(range);
+  else hideSelToolbar();
+});
+
+$('#sel-hl').addEventListener('mousedown', e => { e.preventDefault(); addHighlight(); });
+$('#sel-hl').addEventListener('touchstart', e => { e.preventDefault(); addHighlight(); }, { passive: false });
 
 async function gotoPage(n) {
   const local = pairs.find(p => p.page === n);
@@ -983,8 +1068,8 @@ function unwrap(el) {
   parent.normalize();
 }
 
-// обернуть текстовый диапазон [start,end) (по textContent) в <mark>
-function highlightRange(root, start, end) {
+// обернуть текстовый диапазон [start,end) (по textContent корня) в <mark class=cls>
+function highlightRange(root, start, end, cls = 'search-hit', data) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   let pos = 0, startNode = null, startOff = 0, endNode = null, endOff = 0, n;
   while ((n = walker.nextNode())) {
@@ -993,15 +1078,19 @@ function highlightRange(root, start, end) {
     if (pos + len >= end) { endNode = n; endOff = end - pos; break; }
     pos += len;
   }
-  if (!startNode || !endNode) return;
+  if (!startNode || !endNode) return false;
   try {
     const range = document.createRange();
     range.setStart(startNode, startOff);
     range.setEnd(endNode, endOff);
     const mark = document.createElement('mark');
-    mark.className = 'search-hit';
+    mark.className = cls;
+    if (data) Object.assign(mark.dataset, data);
     range.surroundContents(mark); // бросает, если диапазон пересекает границы элементов
-  } catch { /* совпадение пересекает разметку (напр. сноску) — обойдёмся вспышкой пары */ }
+    return true;
+  } catch {
+    return false; // диапазон пересекает разметку (напр. сноску) — пропускаем
+  }
 }
 
 async function runSearch(raw) {
