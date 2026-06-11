@@ -236,5 +236,6 @@
     }
   ],
   "hasImages": true,
-  "imagePattern": "img/p{page}.jpg"
+  "imagePattern": "img/p{page}.jpg",
+  "feedbackEmail": "ismailoffism@gmail.com"
 }

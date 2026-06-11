@@ -643,6 +643,7 @@ function removeHighlight(ts) {
 /* плавающая кнопка над выделением */
 function showSelToolbar(range) {
   const bar = $('#sel-toolbar');
+  $('#sel-err').hidden = !(book && book.feedbackEmail);
   const r = range.getBoundingClientRect();
   bar.hidden = false;
   bar.style.top = Math.max(4, r.top - bar.offsetHeight - 6) + 'px';
@@ -664,6 +665,36 @@ document.addEventListener('selectionchange', () => {
 
 $('#sel-hl').addEventListener('mousedown', e => { e.preventDefault(); addHighlight(); });
 $('#sel-hl').addEventListener('touchstart', e => { e.preventDefault(); addHighlight(); }, { passive: false });
+
+/* «Сообщить об ошибке»: выделенный фрагмент → письмо с местом (глава/сектор/страница/язык).
+   Адрес берётся из book.json (feedbackEmail) — у книг без адреса кнопка скрыта. */
+function reportError() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || !sel.rangeCount) return;
+  const range = sel.getRangeAt(0);
+  const el = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
+  const member = el.closest('.member');
+  const pairEl = el.closest('.pair');
+  if (!member || !pairEl || !book || !book.feedbackEmail) return;
+  const frag = sel.toString().trim().slice(0, 400);
+  const ch = book.chapters[chapterIndex];
+  const subject = `Правка: ${pickTitle(book.title)}`;
+  const body = [
+    `Книга: ${pickTitle(book.title)} (${bookId})`,
+    `Глава: ${ch.file} — ${pickTitle(ch.title)}`,
+    `Сектор: ${pairEl.dataset.id}${pairEl.dataset.page ? ` (стр. ${pairEl.dataset.page})` : ''}, язык: ${member.getAttribute('lang')}`,
+    '',
+    'Фрагмент с ошибкой:',
+    `«${frag}»`,
+    '',
+    'Как должно быть:',
+    '',
+  ].join('\n');
+  location.href = `mailto:${book.feedbackEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  hideSelToolbar();
+}
+$('#sel-err').addEventListener('mousedown', e => { e.preventDefault(); reportError(); });
+$('#sel-err').addEventListener('touchstart', e => { e.preventDefault(); reportError(); }, { passive: false });
 
 async function gotoPage(n) {
   const local = pairs.find(p => p.page === n);
