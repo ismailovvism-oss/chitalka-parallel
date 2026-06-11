@@ -1021,6 +1021,7 @@ function importSettings(file) {
 }
 
 $('#btn-help').addEventListener('click', () => { $('#settings').hidden = true; openOverlay($('#help')); });
+$('#btn-about').addEventListener('click', () => { $('#settings').hidden = true; openOverlay($('#about')); });
 
 /* ===== статистика чтения ===== */
 function localDay(d) {
@@ -1399,6 +1400,11 @@ function renderLibrary() {
     ul.appendChild(li);
   }
   stream.appendChild(ul);
+  // подпись внизу полки: чья это библиотека
+  const brand = document.createElement('div');
+  brand.className = 'brand';
+  brand.innerHTML = 'Библиотека Исмаила · <a href="mailto:qaadiy@gmail.com">qaadiy@gmail.com</a>';
+  stream.appendChild(brand);
   window.scrollTo(0, 0);
 }
 

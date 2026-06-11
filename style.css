@@ -502,3 +502,19 @@ mark.hl {
   font-size: 0.9rem;
   opacity: 0.95;
 }
+
+/* брендинг */
+.brand {
+  margin: 2rem 0 1rem;
+  text-align: center;
+  font-size: 0.82rem;
+  opacity: 0.55;
+}
+.brand a { color: inherit; }
+.about-logo {
+  display: block;
+  margin: 0 auto 0.6rem;
+  max-width: 96px;
+  max-height: 96px;
+}
+.about-line { margin: 0.5rem 0; }
