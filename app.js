@@ -438,7 +438,7 @@ function buildToc() {
     const pages = document.createElement('span');
     pages.className = 'toc-pages';
     btn.append(title, pages);
-    btn.addEventListener('click', () => { $('#toc').hidden = true; loadChapter(i); });
+    btn.addEventListener('click', () => { $('#toc').hidden = true; consumeOverlayMark(); loadChapter(i); });
     li.appendChild(btn);
     ul.appendChild(li);
   });
@@ -506,6 +506,7 @@ function updateBookmarkBtn() {
 
 function gotoSector(secId, chapter) {
   $('#toc').hidden = true;
+  consumeOverlayMark();
   if (chapter === chapterIndex) scrollToPair(secId, true);
   else loadChapter(chapter, secId);
 }
@@ -699,13 +700,13 @@ function openScan() {
   const img = $('#img-scan');
   img.src = base + book.imagePattern.replace('{page}', p);
   img.classList.remove('zoom');
-  $('#img-overlay').hidden = false;
+  openOverlay($('#img-overlay'));
 }
 
 $('#btn-scan').addEventListener('click', openScan);
 $('#img-overlay').addEventListener('click', e => {
   if (e.target.id === 'img-scan') e.target.classList.toggle('zoom');
-  else $('#img-overlay').hidden = true;
+  else { $('#img-overlay').hidden = true; consumeOverlayMark(); }
 });
 
 /* ===== панель валидатора ===== */
@@ -930,6 +931,17 @@ function bindSettings() {
   layout.addEventListener('change', () => { settings.layout = layout.value; saveSettings(); applyLayout(); updateActive(); });
   fnmode.addEventListener('change', () => { settings.fnMode = fnmode.value; saveSettings(); });
   align.addEventListener('change', () => { settings.align = align.value; saveSettings(); applyAlign(); });
+  $('#set-reset').addEventListener('click', () => {
+    settings.fonts = {};
+    settings.margin = DEFAULTS.margin;
+    settings.colRatio = DEFAULTS.colRatio;
+    settings.align = DEFAULTS.align;
+    saveSettings();
+    if (book) { ensureFontDefaults(); applyFonts(); setupFontSettings(); }
+    applyAlign();
+    syncSettingControls();
+    toast('Оформление сброшено к значениям по умолчанию');
+  });
   order.addEventListener('change', () => {
     settings.swap = order.value === '1';
     saveSettings();
@@ -977,7 +989,7 @@ function importSettings(file) {
   reader.readAsText(file);
 }
 
-$('#btn-help').addEventListener('click', () => { $('#settings').hidden = true; $('#help').hidden = false; });
+$('#btn-help').addEventListener('click', () => { $('#settings').hidden = true; openOverlay($('#help')); });
 
 /* ===== статистика чтения ===== */
 function localDay(d) {
@@ -1034,7 +1046,7 @@ function buildStats() {
   box.appendChild(note);
 }
 
-$('#btn-stats').addEventListener('click', () => { $('#settings').hidden = true; buildStats(); $('#stats').hidden = false; });
+$('#btn-stats').addEventListener('click', () => { $('#settings').hidden = true; buildStats(); openOverlay($('#stats')); });
 
 $('#set-export').addEventListener('click', exportSettings);
 $('#set-import-btn').addEventListener('click', () => $('#set-import').click());
@@ -1045,10 +1057,22 @@ $('#set-import').addEventListener('change', e => {
 });
 
 /* ===== прочие обработчики ===== */
-$('#btn-toc').addEventListener('click', () => { $('#toc').hidden = false; fillPageRanges(); });
-$('#btn-settings').addEventListener('click', () => { $('#settings').hidden = false; });
+/* системная «назад» (мобайл) закрывает открытую панель, а не уходит из книги:
+   при открытии панели кладём в историю маркер; popstate с маркером = закрыть панель */
+let overlayMark = false;   // наш маркер лежит в истории
+let suppressPop = false;   // свой history.back() при закрытии из UI — съесть без route()
+function openOverlay(el) {
+  el.hidden = false;
+  if (!overlayMark) { overlayMark = true; history.pushState({ overlay: true }, ''); }
+}
+// вызвать после закрытия панели из UI (Esc, тап мимо, выбор пункта) — убрать маркер
+function consumeOverlayMark() {
+  if (overlayMark && !anyPopupOpen()) { overlayMark = false; suppressPop = true; history.back(); }
+}
+$('#btn-toc').addEventListener('click', () => { openOverlay($('#toc')); fillPageRanges(); });
+$('#btn-settings').addEventListener('click', () => { openOverlay($('#settings')); });
 document.querySelectorAll('.overlay').forEach(ov => {
-  ov.addEventListener('click', e => { if (e.target === ov) ov.hidden = true; });
+  ov.addEventListener('click', e => { if (e.target === ov) { ov.hidden = true; consumeOverlayMark(); } });
 });
 $('#btn-vis').addEventListener('click', () => { if (book) cycleVisibility(); });
 $('#btn-prev').addEventListener('click', () => { if (chapterIndex > 0) loadChapter(chapterIndex - 1); });
@@ -1080,7 +1104,7 @@ function closeTopPopup() {
   return closed;
 }
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') { closeTopPopup(); return; }
+  if (e.key === 'Escape') { if (closeTopPopup()) consumeOverlayMark(); return; }
   const tag = (e.target.tagName || '').toLowerCase();
   if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
   if (e.metaKey || e.ctrlKey || e.altKey) return;
@@ -1145,6 +1169,7 @@ let pendingHit = null; // { ci, id, lang, start, end } — подсветить 
 
 function jumpToHit(r) {
   $('#search').hidden = true;
+  consumeOverlayMark();
   pendingHit = r;
   if (r.ci === chapterIndex) applyPendingHit();
   else loadChapter(r.ci, r.id);
@@ -1265,7 +1290,7 @@ function renderResults(results, label) {
 
 $('#btn-search').addEventListener('click', () => {
   if (!book) return;
-  $('#search').hidden = false;
+  openOverlay($('#search'));
   $('#search-input').focus();
 });
 $('#search-form').addEventListener('submit', e => {
@@ -1407,7 +1432,11 @@ function route() {
   if (entry) openBook(entry, { sector: safeSector });
   else renderLibrary();
 }
-window.addEventListener('popstate', route);
+window.addEventListener('popstate', () => {
+  if (suppressPop) { suppressPop = false; return; }
+  if (overlayMark) { overlayMark = false; if (closeTopPopup()) return; }
+  route();
+});
 
 $('#btn-home').addEventListener('click', () => {
   history.pushState({}, '', location.pathname);
