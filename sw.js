@@ -10,7 +10,7 @@
  * Версию бампать при изменении оболочки — старый кеш чистится на activate.
  */
 
-const VERSION = 'chitalka-v14';
+const VERSION = 'chitalka-v15';
 const SHELL = [
   './',
   'index.html',

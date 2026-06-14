@@ -1203,6 +1203,14 @@ let pendingHit = null; // { ci, id, lang, start, end } — подсветить 
 function jumpToHit(r) {
   $('#search').hidden = true;
   consumeOverlayMark();
+  if (r.bookId && r.bookId !== bookId) { // попадание в другой книге — открываем её
+    const entry = library.find(e => e.id === r.bookId);
+    if (entry) {
+      history.pushState({}, '', '?book=' + encodeURIComponent(entry.id));
+      openBook(entry, { hit: r });
+      return;
+    }
+  }
   pendingHit = r;
   if (r.ci === chapterIndex) applyPendingHit();
   else loadChapter(r.ci, r.id);
@@ -1257,41 +1265,92 @@ function highlightRange(root, start, end, cls = 'search-hit', data) {
   }
 }
 
+/* ===== поиск: внутри книги или по всей библиотеке ===== */
+// загрузчики, не трогающие глобалы текущей книги (своя кеш-карта)
+const searchManifests = new Map(); // id → manifest (+ _base)
+const searchChapters = new Map();  // `${id}/${file}` → данные главы
+async function searchManifest(entry) {
+  if (!searchManifests.has(entry.id)) {
+    const b = entry.base.endsWith('/') ? entry.base : entry.base + '/';
+    const m = JSON.parse(await fetchText(b + 'book.json'));
+    if (!Array.isArray(m.languages) || !Array.isArray(m.chapters)) throw new Error('bad manifest');
+    if (!Array.isArray(m.rtl)) m.rtl = [];
+    m._base = b;
+    searchManifests.set(entry.id, m);
+  }
+  return searchManifests.get(entry.id);
+}
+async function searchChapter(entry, m, ci) {
+  const key = entry.id + '/' + m.chapters[ci].file;
+  if (!searchChapters.has(key)) {
+    const texts = {};
+    await Promise.all(m.languages.map(async lang => {
+      texts[lang] = await fetchText(`${m._base}${lang}/${m.chapters[ci].file}`);
+    }));
+    searchChapters.set(key, buildChapter(texts, m.languages));
+  }
+  return searchChapters.get(key);
+}
+function searchChapterTitle(m, ci) {
+  const t = m.chapters[ci].title || {};
+  return t.ru || Object.values(t).find(Boolean) || `Глава ${ci + 1}`;
+}
+
+let searchScopeMode = 'library'; // 'book' | 'library'
+function setSearchScope(mode) {
+  searchScopeMode = mode;
+  $('#search-scope').querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.scope === mode));
+  $('#search-input').placeholder = mode === 'library' ? 'Поиск по всей библиотеке…' : 'Поиск по книге…';
+}
+
+const SEARCH_CAP = 300;
 async function runSearch(raw) {
   const q = normalize(raw).trim();
   const box = $('#search-results');
   if (q.length < 2) { box.textContent = 'Введите минимум 2 символа.'; return; }
   const seq = ++searchSeq;
   box.textContent = 'Поиск…';
+  const libraryScope = searchScopeMode === 'library' || !bookId;
+  const entries = libraryScope ? library : library.filter(e => e.id === bookId);
   const results = [];
-  for (let ci = 0; ci < book.chapters.length; ci++) {
-    let data;
-    try { data = await loadChapterData(ci); } catch { continue; }
+  let capped = false;
+  for (const entry of entries) {
+    let m;
+    try { m = await searchManifest(entry); } catch { continue; }
     if (seq !== searchSeq) return; // запущен новый поиск — бросаем этот
-    for (const pair of data.pairs) {
-      for (const lang of book.languages) {
-        if (pair[lang] == null) continue;
-        const text = htmlToText(pair[lang]);
-        const { norm, map } = normalizeWithMap(text);
-        const idx = norm.indexOf(q);
-        if (idx >= 0) {
-          results.push({ ci, id: pair.id, lang, text, start: map[idx], end: map[idx + q.length - 1] + 1 });
+    for (let ci = 0; ci < m.chapters.length; ci++) {
+      let data;
+      try { data = await searchChapter(entry, m, ci); } catch { continue; }
+      if (seq !== searchSeq) return;
+      for (const pair of data.pairs) {
+        for (const lang of m.languages) {
+          if (pair[lang] == null) continue;
+          const text = htmlToText(pair[lang]);
+          const { norm, map } = normalizeWithMap(text);
+          const idx = norm.indexOf(q);
+          if (idx >= 0) results.push({
+            bookId: entry.id, bookTitle: entryLabel(entry),
+            ci, chTitle: searchChapterTitle(m, ci),
+            id: pair.id, lang, rtl: m.rtl.includes(lang),
+            text, start: map[idx], end: map[idx + q.length - 1] + 1,
+          });
         }
       }
+      if (results.length >= SEARCH_CAP) { capped = true; break; }
     }
-    if (results.length > 200) break;
+    if (capped) break;
   }
   if (seq !== searchSeq) return;
-  renderResults(results, raw.trim());
+  renderResults(results, raw.trim(), libraryScope, capped);
 }
 
-function renderResults(results, label) {
+function renderResults(results, label, libraryScope, capped) {
   const box = $('#search-results');
   box.innerHTML = '';
   if (!results.length) { box.textContent = `Ничего не найдено: «${label}».`; return; }
   const head = document.createElement('div');
   head.className = 'search-count';
-  head.textContent = `Найдено: ${results.length}`;
+  head.textContent = `Найдено: ${results.length}${capped ? '+ (показаны первые)' : ''}`;
   box.appendChild(head);
   for (const r of results) {
     const item = document.createElement('button');
@@ -1300,17 +1359,15 @@ function renderResults(results, label) {
 
     const meta = document.createElement('span');
     meta.className = 'search-meta';
-    meta.textContent = `${pickTitle(book.chapters[r.ci].title)} · ${r.lang.toUpperCase()}`;
+    meta.textContent = (libraryScope ? `${r.bookTitle} · ` : '') + `${r.chTitle} · ${r.lang.toUpperCase()}`;
     item.appendChild(meta);
 
     const snip = document.createElement('span');
     snip.className = 'search-snip';
-    snip.dir = book.rtl.includes(r.lang) ? 'rtl' : 'ltr';
+    snip.dir = r.rtl ? 'rtl' : 'ltr';
     const from = Math.max(0, r.start - 40);
     const to = Math.min(r.text.length, r.end + 40);
-    snip.append(
-      (from > 0 ? '…' : '') + r.text.slice(from, r.start),
-    );
+    snip.append((from > 0 ? '…' : '') + r.text.slice(from, r.start));
     const mark = document.createElement('mark');
     mark.textContent = r.text.slice(r.start, r.end);
     snip.append(mark, r.text.slice(r.end, to) + (to < r.text.length ? '…' : ''));
@@ -1322,10 +1379,20 @@ function renderResults(results, label) {
 }
 
 $('#btn-search').addEventListener('click', () => {
-  if (!book) return;
+  // в книге — по умолчанию по книге (с переключателем); в библиотеке — по всей
+  const bookChip = $('#search-scope').querySelector('[data-scope="book"]');
+  bookChip.disabled = !bookId;
+  bookChip.classList.toggle('chip-off', !bookId);
+  setSearchScope(bookId ? 'book' : 'library');
   openOverlay($('#search'));
   $('#search-input').focus();
 });
+$('#search-scope').querySelectorAll('.chip').forEach(c => c.addEventListener('click', () => {
+  if (c.dataset.scope === 'book' && !bookId) return;
+  setSearchScope(c.dataset.scope);
+  const q = $('#search-input').value;
+  if (normalize(q).trim().length >= 2) runSearch(q);
+}));
 $('#search-form').addEventListener('submit', e => {
   e.preventDefault();
   runSearch($('#search-input').value);
@@ -1579,6 +1646,8 @@ async function openBook(entry, opts = {}) {
   document.title = pickTitle(book.title);
   buildToc();
   buildBookmarks();
+  // переход из поиска по библиотеке: открыть нужную главу и подсветить попадание
+  if (opts.hit) { pendingHit = opts.hit; await loadChapter(opts.hit.ci, opts.hit.id); return; }
   // deep-link ?s=<sector> — найти главу с этим сектором; иначе вернуться к позиции
   if (opts.sector) {
     const ci = await chapterOfSector(opts.sector);

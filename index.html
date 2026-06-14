@@ -19,7 +19,7 @@
 <header id="topbar">
   <button id="btn-home" type="button" title="Все книги">📚</button>
   <button id="btn-toc" type="button" title="Оглавление">☰</button>
-  <button id="btn-search" type="button" title="Поиск по книге">🔍</button>
+  <button id="btn-search" type="button" title="Поиск (по книге или по всей библиотеке)">🔍</button>
   <button id="btn-bookmark" type="button" title="Закладка на текущем месте">🔖</button>
   <div id="chapter-title">Загрузка…</div>
   <button id="btn-warn" type="button" title="Ошибки контракта" hidden>⚠</button>
@@ -179,9 +179,13 @@
 <div id="search" class="overlay" hidden>
   <div class="sheet">
     <form id="search-form">
-      <input id="search-input" type="search" placeholder="Поиск по книге…" autocomplete="off" enterkeyhint="search">
+      <input id="search-input" type="search" placeholder="Поиск по всей библиотеке…" autocomplete="off" enterkeyhint="search">
       <button type="submit" id="search-go">Найти</button>
     </form>
+    <div id="search-scope" class="chips">
+      <button type="button" class="chip" data-scope="book">Эта книга</button>
+      <button type="button" class="chip" data-scope="library">Вся библиотека</button>
+    </div>
     <div id="search-results"></div>
   </div>
 </div>

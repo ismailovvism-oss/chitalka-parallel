@@ -369,7 +369,6 @@ body[data-layout="h"][data-colrtl] .pair > .member[dir="rtl"] {
 /* в библиотеке скрыты элементы режима чтения */
 body[data-view="library"] #btn-home,
 body[data-view="library"] #btn-toc,
-body[data-view="library"] #btn-search,
 body[data-view="library"] #btn-bookmark,
 body[data-view="library"] #btn-vis,
 body[data-view="library"] #btn-warn,
@@ -540,6 +539,8 @@ mark.hl {
   border-color: var(--accent, #b07a2c);
   color: #fff;
 }
+.chip-off { opacity: 0.4; cursor: default; }
+#search-scope { margin: 0.5rem 0 0.2rem; }
 
 /* полка с обложками */
 .shelf {
