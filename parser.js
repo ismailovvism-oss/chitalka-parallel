@@ -93,6 +93,7 @@ function parseFile(md) {
   const items = [];
   let page = null;
   let cur = null;
+  let inNote = false;   // регион <!-- note --> … <!-- /note --> — личные правки автора, не публикуем
 
   const flush = () => {
     if (cur) {
@@ -105,6 +106,10 @@ function parseFile(md) {
   for (const raw of lines) {
     const line = raw.trim();
     let m;
+    // личные заметки автора (вычитка) при чтении прячем целиком
+    if (/^<!--\s*note\s*-->$/i.test(line)) { flush(); inNote = true; continue; }
+    if (/^<!--\s*\/\s*note\s*-->$/i.test(line)) { inNote = false; continue; }
+    if (inNote) continue;
     if ((m = line.match(/^<!--\s*p(\d+)\s*-->$/))) {
       flush();
       page = parseInt(m[1], 10);
