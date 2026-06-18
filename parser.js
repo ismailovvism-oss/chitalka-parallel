@@ -51,15 +51,23 @@ function renderBlocks(lines) {
     if (isQuote(lines[i])) {
       const run = [];
       while (i < lines.length && isQuote(lines[i])) { run.push(lines[i].replace(/^>\s?/, '')); i++; }
-      const m = run[0] && run[0].match(/^\[!([\w-]+)\]\s*(.*)$/);
+      // [!тип] статичный, [!тип]+ сворачиваемый (раскрыт), [!тип]- сворачиваемый (свёрнут)
+      const m = run[0] && run[0].match(/^\[!([\w-]+)\]([+-]?)\s*(.*)$/);
       if (m) {
         const type = m[1].toLowerCase();
-        const title = (m[2] || '').trim() || CALLOUT_LABELS[type] || (type[0].toUpperCase() + type.slice(1));
+        const fold = m[2];   // '+' раскрыт, '-' свёрнут, '' не сворачивается
+        const title = (m[3] || '').trim() || CALLOUT_LABELS[type] || (type[0].toUpperCase() + type.slice(1));
         const body = run.slice(1);
-        out.push('<div class="callout callout-' + type + '">'
-          + '<div class="callout-title">' + inlineMd(title) + '</div>'
-          + (body.length ? '<div class="callout-body">' + renderBlocks(body).join('') + '</div>' : '')
-          + '</div>');
+        const bodyHtml = body.length ? '<div class="callout-body">' + renderBlocks(body).join('') + '</div>' : '';
+        if (fold) {
+          out.push('<details class="callout callout-' + type + ' callout-foldable"' + (fold === '+' ? ' open' : '') + '>'
+            + '<summary class="callout-title">' + inlineMd(title) + '</summary>'
+            + bodyHtml + '</details>');
+        } else {
+          out.push('<div class="callout callout-' + type + '">'
+            + '<div class="callout-title">' + inlineMd(title) + '</div>'
+            + bodyHtml + '</div>');
+        }
       } else {
         out.push('<blockquote>' + renderBlocks(run).join('') + '</blockquote>');
       }

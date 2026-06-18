@@ -124,6 +124,8 @@ node tools/validate.js books/tawfiq
 - `renderGroup`→`renderBlocks` рисует блочный markdown внутри сектора: цитата `> ` →
   `<blockquote>`, списки `- `/`1. ` → `<ul>/<ol>`, callout Obsidian `> [!тип] заголовок`
   → `.callout.callout-<тип>` (тип произвольный; без заголовка — подпись из `CALLOUT_LABELS`).
+  `[!тип]+`/`[!тип]-` — сворачиваемый callout (`<details class="callout-foldable">`,
+  `+` раскрыт / `-` свёрнут; тело свёрнутого скрыто явным CSS, не UA-стилем).
 - `parseFile` **прячет регионы `<!-- note --> … <!-- /note -->`** — это личные
   редакторские заметки автора (вычитка), не для публикации.
 

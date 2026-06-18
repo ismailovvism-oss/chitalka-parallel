@@ -167,6 +167,18 @@ body[data-align="justify"] .member p { text-align: justify; }
 .member .callout-warning, .member .callout-important { border-inline-start-color: #c9821e; }
 .member .callout-danger, .member .callout-failure { border-inline-start-color: var(--error); }
 .member .callout-success { border-inline-start-color: #3f8f54; }
+/* сворачиваемые callout’ы: [!тип]+ (раскрыт) / [!тип]- (свёрнут) */
+.member details.callout-foldable > summary.callout-title {
+  cursor: pointer; list-style: none; user-select: none;
+  display: flex; align-items: center; gap: 0.4em;
+}
+.member details.callout-foldable > summary.callout-title::-webkit-details-marker { display: none; }
+.member details.callout-foldable > summary.callout-title::before {
+  content: "\25B8"; font-size: 0.85em; flex: 0 0 auto;
+  transition: transform 0.15s;
+}
+.member details.callout-foldable[open] > summary.callout-title::before { transform: rotate(90deg); }
+.member details.callout-foldable:not([open]) > .callout-body { display: none; }
 .member + .member {
   margin-top: 0.4rem;
   padding-top: 0.4rem;
