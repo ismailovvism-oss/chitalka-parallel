@@ -1447,7 +1447,9 @@ function genCover(e) {
 const FACETS = [
   { key: 'langs', label: 'Язык', fmt: v => langName(v) },
   { key: 'authors', label: 'Автор', fmt: v => v },
+  { key: 'madhhab', label: 'Мазхаб', fmt: v => v },
   { key: 'era', label: 'Эпоха', fmt: v => v },
+  { key: 'genre', label: 'Жанр', fmt: v => v },
   { key: 'tags', label: 'Тема', fmt: v => v },
 ];
 function entryFacetVals(e, key) {
