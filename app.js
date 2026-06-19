@@ -1535,6 +1535,71 @@ function entryMatchesFacets(e, facets) {
   return true;
 }
 
+/* ===== боковое дерево категорий ===== */
+function openTree() { renderTree(); $('#cat-tree').classList.add('open'); $('#tree-backdrop').hidden = false; }
+function closeTree() { $('#cat-tree').classList.remove('open'); $('#tree-backdrop').hidden = true; }
+function toggleTreeCollapse(id) {
+  let c = Array.isArray(settings.treeCollapsed) ? settings.treeCollapsed : (settings.treeCollapsed = []);
+  settings.treeCollapsed = c.includes(id) ? c.filter(x => x !== id) : [...c, id];
+  saveSettings();
+  renderTree();
+}
+function renderTree() {
+  const aside = $('#cat-tree');
+  if (!aside) return;
+  aside.innerHTML = '';
+  const cat = Array.isArray(settings.shelfCat) ? settings.shelfCat : [];
+  // дети по parent
+  const kids = new Map(); const roots = [];
+  for (const n of taxNodes) {
+    if (n.parent) { (kids.get(n.parent) || kids.set(n.parent, []).get(n.parent)).push(n); }
+    else roots.push(n);
+  }
+  // выбранный узел и его предки (активный путь раскрыт)
+  let selId = null;
+  for (const n of taxNodes) { const p = catPathNames(n.id); if (p.length === cat.length && p.every((s, i) => s === cat[i])) { selId = n.id; break; } }
+  const activeIds = new Set(selId ? catChain(selId).map(n => n.id) : []);
+  const collapsed = new Set(Array.isArray(settings.treeCollapsed) ? settings.treeCollapsed : []);
+  const countUnder = node => {
+    const np = catPathNames(node.id);
+    return library.filter(e => { const p = bookCatPath(e); return np.every((s, i) => p[i] === s); }).length;
+  };
+  const goto = path => { settings.shelfCat = path; saveSettings(); closeTree(); renderLibrary(); };
+  // «Все книги»
+  const allRow = document.createElement('div'); allRow.className = 'tree-row';
+  const allTwist = document.createElement('span'); allTwist.className = 'tree-twist leaf'; allRow.appendChild(allTwist);
+  const allLink = document.createElement('button'); allLink.type = 'button';
+  allLink.className = 'tree-link' + (cat.length === 0 ? ' active' : '');
+  allLink.textContent = 'Все книги';
+  allLink.addEventListener('click', () => goto([]));
+  allRow.appendChild(allLink); aside.appendChild(allRow);
+  // рекурсия
+  const renderNodes = (list, depth) => {
+    list.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    for (const n of list) {
+      const children = kids.get(n.id) || [];
+      const hasKids = children.length > 0;
+      const isCollapsed = hasKids && collapsed.has(n.id) && !activeIds.has(n.id);
+      const np = catPathNames(n.id);
+      const cnt = countUnder(n);
+      const row = document.createElement('div'); row.className = 'tree-row';
+      row.style.paddingInlineStart = (depth * 0.9) + 'rem';
+      const twist = document.createElement('button'); twist.type = 'button';
+      twist.className = 'tree-twist' + (hasKids ? '' : ' leaf');
+      twist.textContent = hasKids ? (isCollapsed ? '▸' : '▾') : '';
+      if (hasKids) twist.addEventListener('click', () => toggleTreeCollapse(n.id));
+      const link = document.createElement('button'); link.type = 'button';
+      link.className = 'tree-link' + (selId === n.id ? ' active' : '') + (cnt ? '' : ' empty');
+      link.textContent = n.name;
+      if (cnt) { const c = document.createElement('span'); c.className = 'tree-count'; c.textContent = ' · ' + cnt; link.appendChild(c); }
+      link.addEventListener('click', () => goto(np));
+      row.append(twist, link); aside.appendChild(row);
+      if (hasKids && !isCollapsed) renderNodes(children, depth + 1);
+    }
+  };
+  renderNodes(roots, 0);
+}
+
 function renderLibrary() {
   document.body.dataset.view = 'library';
   book = null;
@@ -1544,25 +1609,24 @@ function renderLibrary() {
 
   const open = e => () => { history.pushState({}, '', '?book=' + encodeURIComponent(e.id)); openBook(e); };
 
-  // карточка «Продолжить» для самой недавно открытой книги
+  renderTree(); // боковое дерево навигации (в #cat-tree)
+
+  // строка «Продолжить» — тонкая, только при сохранённой позиции (стр./сектор)
   let recent = null;
   for (const e of library) {
     const l = getLast(e.id);
-    if (l && l.ts && (!recent || l.ts > recent.ts)) recent = { entry: e, ts: l.ts, page: l.page };
+    if (l && l.ts && (l.page != null || l.sector) && (!recent || l.ts > recent.ts)) recent = { entry: e, ts: l.ts, page: l.page };
   }
   if (recent) {
-    const card = document.createElement('button');
-    card.type = 'button';
-    card.className = 'continue-card';
-    const cap = document.createElement('span');
-    cap.className = 'continue-cap';
-    cap.textContent = 'Продолжить чтение';
-    const t = document.createElement('span');
-    t.className = 'continue-title';
+    const line = document.createElement('button');
+    line.type = 'button'; line.className = 'continue-line';
+    const ico = document.createElement('span'); ico.className = 'cl-ico'; ico.textContent = '▶';
+    const t = document.createElement('span'); t.className = 'cl-text';
     t.textContent = entryLabel(recent.entry) + (recent.page != null ? ` · стр. ${recent.page}` : '');
-    card.append(cap, t);
-    card.addEventListener('click', open(recent.entry));
-    stream.appendChild(card);
+    const arr = document.createElement('span'); arr.className = 'cl-arrow'; arr.textContent = '›';
+    line.append(ico, t, arr);
+    line.addEventListener('click', open(recent.entry));
+    stream.appendChild(line);
   }
 
   // ── классификатор: дерево категорий + фасеты (по полям записи index.json) ──
@@ -1592,32 +1656,7 @@ function renderLibrary() {
   // книги в текущей ветке дерева
   const underCat = library.filter(e => entryInCat(e, cat));
 
-  // под-категории текущего уровня (с числом книг)
-  const children = new Map();
-  for (const e of underCat) {
-    const p = bookCatPath(e);
-    if (p.length > cat.length) children.set(p[cat.length], (children.get(p[cat.length]) || 0) + 1);
-  }
-  // объявленные разделы (index.json "categories") — показываем даже без книг (· 0)
-  for (const path of catalogTree) {
-    if (Array.isArray(path) && path.length > cat.length && cat.every((seg, i) => path[i] === seg)) {
-      const name = path[cat.length];
-      if (!children.has(name)) children.set(name, 0);
-    }
-  }
-  if (children.size) {
-    const row = document.createElement('div');
-    row.className = 'chips';
-    for (const [name, n] of [...children.entries()].sort((a, b) => a[0].localeCompare(b[0], 'ru'))) {
-      const c = document.createElement('button');
-      c.type = 'button';
-      c.className = 'chip cat-chip' + (n ? '' : ' cat-empty');
-      c.textContent = n ? `${name} · ${n}` : name;
-      c.addEventListener('click', () => { settings.shelfCat = [...cat, name]; saveSettings(); renderLibrary(); });
-      row.appendChild(c);
-    }
-    panel.appendChild(row);
-  }
+  // навигация по подкатегориям — теперь в боковом дереве (#cat-tree), чипсов нет
 
   // фасеты: значения берём из книг текущей ветки
   for (const f of FACETS) {
@@ -1888,6 +1927,8 @@ $('#btn-home').addEventListener('click', () => {
   history.pushState({}, '', location.pathname);
   renderLibrary();
 });
+$('#btn-cattree').addEventListener('click', openTree);
+$('#tree-backdrop').addEventListener('click', closeTree);
 
 /* ===== старт ===== */
 async function init() {

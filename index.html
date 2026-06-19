@@ -17,16 +17,21 @@
 <body data-theme="light" data-layout="v" data-view="library">
 
 <header id="topbar">
+  <button id="btn-cattree" type="button" title="Разделы">☰</button>
   <button id="btn-home" type="button" title="Все книги">📚</button>
   <button id="btn-toc" type="button" title="Оглавление">☰</button>
   <button id="btn-search" type="button" title="Поиск (по книге или по всей библиотеке)">🔍</button>
   <button id="btn-bookmark" type="button" title="Закладка на текущем месте">🔖</button>
   <div id="chapter-title">Загрузка…</div>
   <button id="btn-warn" type="button" title="Ошибки контракта" hidden>⚠</button>
+  <button id="btn-filter" type="button" title="Фильтры">⛃<span id="filter-count" class="filter-badge" hidden></span></button>
   <button id="btn-vis" type="button" title="Видимость языков">⇅</button>
   <button id="btn-settings" type="button" title="Настройки">⚙</button>
 </header>
 <div id="progress"><i></i></div>
+
+<aside id="cat-tree" aria-label="Разделы"></aside>
+<div id="tree-backdrop" hidden></div>
 
 <main id="stream"></main>
 
