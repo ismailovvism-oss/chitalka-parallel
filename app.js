@@ -1600,6 +1600,53 @@ function renderTree() {
   renderNodes(roots, 0);
 }
 
+/* ===== нижняя панель фильтров (фасеты) ===== */
+function activeFilterCount() {
+  const f = settings.shelfFacets || {};
+  return FACETS.reduce((s, ff) => s + ((f[ff.key] || []).length), 0);
+}
+function updateFilterBadge() {
+  const n = activeFilterCount();
+  const b = $('#filter-count');
+  if (!b) return;
+  b.textContent = n; b.hidden = n === 0;
+}
+function renderFilterSheet() {
+  const body = $('#filter-body');
+  if (!body) return;
+  body.innerHTML = '';
+  const facets = (settings.shelfFacets && typeof settings.shelfFacets === 'object') ? settings.shelfFacets : (settings.shelfFacets = {});
+  const cat = Array.isArray(settings.shelfCat) ? settings.shelfCat : [];
+  const underCat = library.filter(e => entryInCat(e, cat));
+  let any = false;
+  for (const f of FACETS) {
+    const counts = new Map();
+    for (const e of underCat) for (const v of entryFacetVals(e, f.key)) counts.set(v, (counts.get(v) || 0) + 1);
+    const sel = facets[f.key] || [];
+    if (counts.size < 2 && !sel.length) continue;
+    any = true;
+    const grp = document.createElement('div'); grp.className = 'facet';
+    const lab = document.createElement('div'); lab.className = 'facet-label'; lab.textContent = f.label; grp.appendChild(lab);
+    const chips = document.createElement('div'); chips.className = 'chips';
+    for (const [v, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
+      const on = sel.includes(v);
+      const c = document.createElement('button'); c.type = 'button';
+      c.className = 'chip' + (on ? ' active' : '');
+      c.textContent = `${f.fmt(v)} · ${n}`;
+      c.addEventListener('click', () => {
+        const cur = facets[f.key] || [];
+        facets[f.key] = on ? cur.filter(x => x !== v) : [...cur, v];
+        saveSettings();
+        renderLibrary();      // обновить список под шторкой + бейдж
+        renderFilterSheet();  // перерисовать чипсы (счётчики/активность)
+      });
+      chips.appendChild(c);
+    }
+    grp.appendChild(chips); body.appendChild(grp);
+  }
+  if (!any) { const m = document.createElement('div'); m.className = 'facet-empty'; m.textContent = 'Для этого раздела фильтров нет.'; body.appendChild(m); }
+}
+
 function renderLibrary() {
   document.body.dataset.view = 'library';
   book = null;
@@ -1656,45 +1703,10 @@ function renderLibrary() {
   // книги в текущей ветке дерева
   const underCat = library.filter(e => entryInCat(e, cat));
 
-  // навигация по подкатегориям — теперь в боковом дереве (#cat-tree), чипсов нет
-
-  // фасеты: значения берём из книг текущей ветки
-  for (const f of FACETS) {
-    const counts = new Map();
-    for (const e of underCat) for (const v of entryFacetVals(e, f.key)) counts.set(v, (counts.get(v) || 0) + 1);
-    const sel = facets[f.key] || [];
-    if (counts.size < 2 && !sel.length) continue; // нечего фильтровать
-    const grp = document.createElement('div');
-    grp.className = 'facet';
-    const lab = document.createElement('span'); lab.className = 'facet-label'; lab.textContent = f.label;
-    grp.appendChild(lab);
-    const chips = document.createElement('div'); chips.className = 'chips';
-    for (const [v, n] of [...counts.entries()].sort((a, b) => b[1] - a[1])) {
-      const c = document.createElement('button');
-      c.type = 'button';
-      const on = sel.includes(v);
-      c.className = 'chip' + (on ? ' active' : '');
-      c.textContent = `${f.fmt(v)} · ${n}`;
-      c.addEventListener('click', () => {
-        const cur = facets[f.key] || [];
-        facets[f.key] = on ? cur.filter(x => x !== v) : [...cur, v];
-        saveSettings(); renderLibrary();
-      });
-      chips.appendChild(c);
-    }
-    grp.appendChild(chips);
-    panel.appendChild(grp);
-  }
-
-  if (cat.length || FACETS.some(f => (facets[f.key] || []).length)) {
-    const reset = document.createElement('button');
-    reset.type = 'button';
-    reset.className = 'facet-reset';
-    reset.textContent = '✕ Сбросить фильтры';
-    reset.addEventListener('click', () => { settings.shelfCat = []; settings.shelfFacets = {}; saveSettings(); renderLibrary(); });
-    panel.appendChild(reset);
-  }
+  // навигация по подкатегориям — в боковом дереве (#cat-tree); фасеты — в нижней
+  // панели фильтров (#filter-sheet). На основном экране остаётся только крошка.
   stream.appendChild(panel);
+  updateFilterBadge();
 
   const shown = underCat.filter(e => entryMatchesFacets(e, facets));
 
@@ -1929,6 +1941,12 @@ $('#btn-home').addEventListener('click', () => {
 });
 $('#btn-cattree').addEventListener('click', openTree);
 $('#tree-backdrop').addEventListener('click', closeTree);
+$('#btn-filter').addEventListener('click', () => { renderFilterSheet(); openOverlay($('#filter-sheet')); });
+$('#filter-apply').addEventListener('click', () => { $('#filter-sheet').hidden = true; });
+$('#filter-reset').addEventListener('click', () => {
+  settings.shelfFacets = {}; saveSettings();
+  renderLibrary(); renderFilterSheet();
+});
 
 /* ===== старт ===== */
 async function init() {
