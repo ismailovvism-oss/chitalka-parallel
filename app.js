@@ -1647,6 +1647,94 @@ function renderFilterSheet() {
   if (!any) { const m = document.createElement('div'); m.className = 'facet-empty'; m.textContent = 'Для этого раздела фильтров нет.'; body.appendChild(m); }
 }
 
+/* ===== три вида списка книг: обложки / корешки / список ===== */
+// детерминированный хэш строки id → число (для высоты/ширины корешка; стабильно)
+function hashId(s) {
+  let h = 2166136261;
+  for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function openInfoFor(e) { history.pushState({}, '', '?info=' + encodeURIComponent(e.id)); renderBookInfo(e); }
+// цвет корешка: hue рода + светлота от оттенка подкатегории (без хэша)
+function spineColor(e) {
+  const c = catColorOf(e.category);
+  const hue = c.hue != null ? c.hue : (hashId(e.id) % 360);
+  const L = 34 + (((c.shade || 0) % 5) * 5);
+  return { bg: `hsl(${hue} 42% ${L}%)`, edge: `hsl(${hue} 46% ${Math.max(18, L - 13)}%)` };
+}
+// размеры корешка: ширина по объёму (если есть) иначе по хэшу (34–48px); высота по хэшу (88–100%)
+function spineDims(e) {
+  const h = hashId(e.id);
+  const size = (e.counts && (e.counts.sectors || e.counts.chapters)) || e.pages || e.size || 0;
+  let width = size ? 34 + Math.min(14, Math.round(size / 40)) : 34 + (h % 15);
+  width = Math.max(34, Math.min(48, width));
+  const height = 88 + ((h >>> 8) % 13);
+  return { width, height };
+}
+function coverInto(host, e, alt) {
+  if (e.cover) {
+    const img = document.createElement('img');
+    img.src = e.cover; img.alt = alt || ''; img.loading = 'lazy';
+    img.onerror = () => { img.remove(); host.prepend(genCover(e)); };
+    host.appendChild(img);
+  } else host.appendChild(genCover(e));
+}
+function renderBookList(shown, view) {
+  if (view === 'spines') {
+    const shelf = document.createElement('div'); shelf.className = 'spineshelf';
+    for (const e of shown) {
+      const { bg, edge } = spineColor(e); const { width, height } = spineDims(e);
+      const sp = document.createElement('button'); sp.type = 'button'; sp.className = 'spine';
+      sp.style.width = width + 'px'; sp.style.height = height + '%';
+      sp.style.background = `linear-gradient(90deg, ${edge}, ${bg} 16%, ${bg} 84%, ${edge})`;
+      sp.title = entryLabel(e);
+      if (e.review && APPROVAL[e.review]) {
+        const st = document.createElement('span');
+        st.className = 'spine-stripe ' + (e.review === 'approved' ? 'st-ok' : 'st-warn');
+        sp.appendChild(st);
+      }
+      const t = document.createElement('span'); t.className = 'spine-title'; t.textContent = entryLabel(e);
+      sp.appendChild(t);
+      sp.addEventListener('click', () => openInfoFor(e));
+      shelf.appendChild(sp);
+    }
+    stream.appendChild(shelf);
+    return;
+  }
+  if (view === 'list') {
+    const list = document.createElement('div'); list.className = 'booklist';
+    for (const e of shown) {
+      const row = document.createElement('button'); row.type = 'button'; row.className = 'book-row';
+      const thumb = document.createElement('span'); thumb.className = 'br-thumb'; coverInto(thumb, e, '');
+      const title = document.createElement('span'); title.className = 'br-title'; title.textContent = entryLabel(e);
+      const status = document.createElement('span'); status.className = 'br-status'; applyBadges(status, e, false);
+      row.append(thumb, title, status);
+      row.addEventListener('click', () => openInfoFor(e));
+      list.appendChild(row);
+    }
+    stream.appendChild(list);
+    return;
+  }
+  // обложки (по умолчанию): полка с обложками
+  const shelf = document.createElement('div'); shelf.className = 'shelf';
+  for (const e of shown) {
+    const cell = document.createElement('div'); cell.className = 'shelf-item';
+    const btn = document.createElement('button'); btn.type = 'button'; btn.className = 'cover';
+    btn.title = entryLabel(e); btn.setAttribute('aria-label', entryLabel(e));
+    coverInto(btn, e, entryLabel(e));
+    const l = getLast(e.id);
+    if (l && (l.page != null || l.sector)) {
+      const note = document.createElement('span'); note.className = 'cover-badge';
+      note.textContent = l.page != null ? `стр. ${l.page}` : '⋯';
+      btn.appendChild(note);
+    }
+    applyBadges(btn, e, false);
+    btn.addEventListener('click', () => openInfoFor(e));
+    cell.appendChild(btn); shelf.appendChild(cell);
+  }
+  stream.appendChild(shelf);
+}
+
 function renderLibrary() {
   document.body.dataset.view = 'library';
   book = null;
@@ -1710,48 +1798,25 @@ function renderLibrary() {
 
   const shown = underCat.filter(e => entryMatchesFacets(e, facets));
 
-  // полка: обложки стоят на «деревянных» досках (сегменты ячеек сливаются в полку)
-  const shelf = document.createElement('div');
-  shelf.className = 'shelf';
-  for (const e of shown) {
-    const cell = document.createElement('div');
-    cell.className = 'shelf-item';
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cover';
-    btn.title = entryLabel(e);
-    btn.setAttribute('aria-label', entryLabel(e));
-    if (e.cover) {
-      const img = document.createElement('img');
-      img.src = e.cover;
-      img.alt = entryLabel(e);
-      img.loading = 'lazy';
-      img.onerror = () => { img.remove(); btn.prepend(genCover(e)); }; // битая обложка → заглушка
-      btn.appendChild(img);
-    } else {
-      btn.appendChild(genCover(e));
-    }
-    const l = getLast(e.id);
-    if (l && (l.page != null || l.sector)) {
-      const note = document.createElement('span');
-      note.className = 'cover-badge';
-      note.textContent = l.page != null ? `стр. ${l.page}` : '⋯';
-      btn.appendChild(note);
-    }
-    applyBadges(btn, e, false);
-    btn.addEventListener('click', () => {
-      history.pushState({}, '', '?info=' + encodeURIComponent(e.id));
-      renderBookInfo(e);
-    });
-    cell.appendChild(btn);
-    shelf.appendChild(cell);
+  // переключатель видов (запоминается в settings.shelfView)
+  const view = ['covers', 'spines', 'list'].includes(settings.shelfView) ? settings.shelfView : (settings.shelfView = 'covers');
+  const sw = document.createElement('div'); sw.className = 'view-switch';
+  for (const [v, ico, lab] of [['covers', '▦', 'Обложки'], ['spines', '📚', 'Корешки'], ['list', '☰', 'Список']]) {
+    const b = document.createElement('button'); b.type = 'button';
+    b.className = 'vs-btn' + (v === view ? ' active' : '');
+    b.title = lab; b.textContent = ico;
+    b.addEventListener('click', () => { settings.shelfView = v; saveSettings(); renderLibrary(); });
+    sw.appendChild(b);
   }
-  stream.appendChild(shelf);
+  stream.appendChild(sw);
+
   if (!shown.length) {
     const m = document.createElement('div');
     m.className = 'shelf-empty';
     m.textContent = 'По выбранным фильтрам книг нет.';
     stream.appendChild(m);
+  } else {
+    renderBookList(shown, view);
   }
   // подпись внизу полки: чья это библиотека
   const brand = document.createElement('div');
